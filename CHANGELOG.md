@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.6.1
+
+### Changed
+
+- Repository migrated to a `src/` layout (`src/actuarialpy/`) to match the rest
+  of the ecosystem. This is a repository-structure change only — the installed
+  package, its import name, and its public API are unchanged. Development now
+  requires an editable install (`pip install -e .`) for the test suite to import
+  the package, which is the intended behavior of the `src` layout.
+- README: the capabilities summary and package-structure tree now include the
+  credibility module (the dedicated credibility section was added in 0.6.0), and
+  credibility is removed from the list of planned additions.
+
 ## 0.6.0
 
 ### Added

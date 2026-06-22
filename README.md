@@ -23,12 +23,13 @@ ActuarialPy currently supports:
 - Rolling-window summaries, including rolling 12-month MLR and PMPM views.
 - Trend summaries comparing two periods.
 - Component-level driver analysis for categories such as inpatient, outpatient, professional, pharmacy, rebates, and non-fee-for-service expenses.
+- Credibility weighting, including Bühlmann and Bühlmann-Straub models and a credibility-weighting primitive.
 - Validation utilities for common actuarial data issues.
 
 ## Package structure
 
 ```text
-actuarialpy/
+src/actuarialpy/
 ├── metrics.py       # Core ratios, exposure-normalized metrics, and actuarial primitives
 ├── completion.py    # Completion factors, completed claims, IBNR, and claim triangles
 ├── experience.py    # Grouped experience summaries and views
@@ -36,6 +37,7 @@ actuarialpy/
 ├── trend.py         # Trend factors, projection, and period-over-period summaries
 ├── components.py    # Component summaries and driver analysis
 ├── contribution.py  # Share-of-total and contribution-to-change primitives
+├── credibility.py   # Bühlmann / Bühlmann-Straub models and the weighting primitive
 ├── cohorts.py       # Cohort and duration summaries
 ├── forecast.py      # Rate-based forecasting and actual-to-expected comparison
 ├── periods.py       # Period and duration helpers
@@ -264,8 +266,8 @@ credibility_weighted_estimate(observed=actual_pmpm, complement=manual_pmpm, z=0.
 
 ActuarialPy is in early development. The current focus is reliable core
 experience-analysis workflows. Planned additions, kept deliberately separate
-from this corrections-focused release, include seasonality indices, credibility
-weighting, enrollment-to-member-month exposure construction, and deterministic
+from this corrections-focused release, include seasonality indices,
+enrollment-to-member-month exposure construction, and deterministic
 chain-ladder factor development. Stochastic loss modeling, simulation, and
 extreme-value/tail work live in the companion packages (`lossmodels`,
 `risksim`, and `extremeloss`).
