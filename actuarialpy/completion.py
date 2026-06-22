@@ -114,11 +114,24 @@ def make_completion_triangle(
     amount_col: str,
     index_name: str = "origin_period",
     lag_name: str = "lag_month",
+    cumulative: bool = False,
 ) -> pd.DataFrame:
-    """Create a simple cumulative claims triangle by origin period and valuation lag."""
+    """Create a claims triangle by origin period and valuation lag.
+
+    By default ``amount_col`` is assumed to already hold the value *as of* each
+    valuation date (a cumulative-to-date snapshot); amounts are summed within
+    each (origin, lag) cell and pivoted as-is. Set ``cumulative=True`` when
+    ``amount_col`` holds *incremental* amounts at each lag, in which case the
+    incremental values are accumulated across lag to build a cumulative
+    triangle. The two conventions give different triangles, so choose the one
+    that matches your input.
+    """
     validate_columns(df, [origin_col, valuation_col, amount_col])
     temp = df.copy()
     temp[index_name] = pd.to_datetime(temp[origin_col]).dt.to_period("M")
     temp[lag_name] = lag_months(temp[origin_col], temp[valuation_col])
     grouped = temp.groupby([index_name, lag_name], dropna=False)[amount_col].sum().reset_index()
-    return grouped.pivot(index=index_name, columns=lag_name, values=amount_col).sort_index(axis=1)
+    triangle = grouped.pivot(index=index_name, columns=lag_name, values=amount_col).sort_index(axis=1)
+    if cumulative:
+        triangle = triangle.cumsum(axis=1)
+    return triangle

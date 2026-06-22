@@ -7,12 +7,13 @@ from typing import Any
 import pandas as pd
 
 from actuarialpy.columns import as_list, validate_columns
+from actuarialpy.compare import relative_change
 from actuarialpy.metrics import safe_divide
 
 
 def period_change(current: Any, prior: Any) -> Any:
     """Calculate period-over-period change: current / prior - 1."""
-    return safe_divide(current, prior) - 1
+    return relative_change(current, prior)
 
 
 def annualized_trend(current: Any, prior: Any, months_between: float) -> Any:

@@ -3,7 +3,14 @@ import pytest
 
 from actuarialpy.compare import basis_point_change, variance_pct
 from actuarialpy.reporting import to_excel_report
-from actuarialpy.trend import annualized_trend, midpoint_trend_factor, period_change, project_forward, trend_factor, trend_summary
+from actuarialpy.trend import (
+    annualized_trend,
+    midpoint_trend_factor,
+    period_change,
+    project_forward,
+    trend_factor,
+    trend_summary,
+)
 
 
 def test_compare_trend_primitives():

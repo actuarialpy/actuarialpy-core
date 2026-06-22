@@ -6,7 +6,7 @@ from collections.abc import Iterable
 
 import pandas as pd
 
-from actuarialpy.columns import as_list, sum_columns, validate_columns
+from actuarialpy.columns import EXPOSURE_SUFFIX, as_list, sum_columns, validate_columns
 from actuarialpy.metrics import loss_ratio, per_exposure
 from actuarialpy.profiles import apply_profile_labels, get_profile_defaults
 
@@ -24,12 +24,10 @@ def _validate_exposures(exposures: list[str]) -> None:
 
 
 def _per_exposure_column_names(total_expense_name: str, total_revenue_name: str, exposure: str) -> tuple[str, str]:
-    mapping = {
-        "member_months": ("expense_pmpm", "revenue_pmpm"),
-        "subscriber_months": ("expense_pspm", "revenue_pspm"),
-        "employee_months": ("expense_pepm", "revenue_pepm"),
-    }
-    return mapping.get(exposure, (f"{total_expense_name}_per_{exposure}", f"{total_revenue_name}_per_{exposure}"))
+    suffix = EXPOSURE_SUFFIX.get(exposure)
+    if suffix:
+        return f"expense_{suffix}", f"revenue_{suffix}"
+    return f"{total_expense_name}_per_{exposure}", f"{total_revenue_name}_per_{exposure}"
 
 
 def summarize_experience(

@@ -3,29 +3,49 @@
 from __future__ import annotations
 
 from numbers import Number
-from typing import Any
+from typing import Any, cast
 
 import numpy as np
+import pandas as pd
 
 
 def safe_divide(numerator: Any, denominator: Any, *, fill_value: float = np.nan) -> Any:
-    """Safely divide numerator by denominator.
+    """Safely divide numerator by denominator, element-wise.
 
-    Scalars return scalars. Array-like inputs return NumPy arrays. Zero denominators
-    are returned as ``fill_value``.
+    Return-type contract:
+
+    - scalar / scalar -> native ``float`` (or ``fill_value`` on a zero divisor)
+    - if either input is a ``pandas.Series`` -> ``pandas.Series`` whose index and
+      name follow the numerator (or the denominator when the numerator is scalar)
+    - otherwise array-like -> ``numpy.ndarray``
+
+    Zero denominators yield ``fill_value``. Inputs are combined positionally
+    (NumPy broadcasting), so Series inputs are assumed to already be aligned.
     """
     if isinstance(numerator, Number) and isinstance(denominator, Number):
-        return fill_value if denominator == 0 else numerator / denominator
+        if denominator == 0:
+            return fill_value
+        return cast(Any, numerator) / cast(Any, denominator)
+
+    index = None
+    name = None
+    if isinstance(numerator, pd.Series):
+        index, name = numerator.index, numerator.name
+    elif isinstance(denominator, pd.Series):
+        index, name = denominator.index, denominator.name
 
     numerator_arr = np.asarray(numerator, dtype=float)
     denominator_arr = np.asarray(denominator, dtype=float)
     numerator_b, denominator_b = np.broadcast_arrays(numerator_arr, denominator_arr)
-    return np.divide(
+    result = np.divide(
         numerator_b,
         denominator_b,
         out=np.full(numerator_b.shape, fill_value, dtype=float),
         where=denominator_b != 0,
     )
+    if index is not None and result.ndim == 1 and len(result) == len(index):
+        return pd.Series(result, index=index, name=name)
+    return result
 
 
 def ratio(numerator: Any, denominator: Any) -> Any:
@@ -50,7 +70,13 @@ def expense_ratio(expenses: Any, revenue: Any) -> Any:
 
 def combined_ratio(losses: Any, expenses: Any, revenue: Any) -> Any:
     """Calculate combined ratio: (losses + expenses) divided by revenue."""
-    return ratio(np.asarray(losses) + np.asarray(expenses), revenue)
+    if isinstance(losses, pd.Series) or isinstance(expenses, pd.Series):
+        combined = losses + expenses
+    elif isinstance(losses, Number) and isinstance(expenses, Number):
+        combined = cast(Any, losses) + cast(Any, expenses)
+    else:
+        combined = np.asarray(losses, dtype=float) + np.asarray(expenses, dtype=float)
+    return ratio(combined, revenue)
 
 
 def actual_to_expected(actual: Any, expected: Any) -> Any:

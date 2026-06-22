@@ -6,18 +6,13 @@ from collections.abc import Iterable
 
 import pandas as pd
 
-from actuarialpy.columns import as_list, validate_columns
+from actuarialpy.columns import EXPOSURE_SUFFIX, as_list, validate_columns
 from actuarialpy.metrics import per_exposure, safe_divide
 
 
 def _per_exposure_name(component: str, exposure_col: str) -> str:
-    if exposure_col == "member_months":
-        return f"{component}_pmpm"
-    if exposure_col == "subscriber_months":
-        return f"{component}_pspm"
-    if exposure_col == "employee_months":
-        return f"{component}_pepm"
-    return f"{component}_per_{exposure_col}"
+    suffix = EXPOSURE_SUFFIX.get(exposure_col)
+    return f"{component}_{suffix}" if suffix else f"{component}_per_{exposure_col}"
 
 
 def summarize_components(

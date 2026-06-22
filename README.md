@@ -30,21 +30,28 @@ ActuarialPy currently supports:
 ```text
 actuarialpy/
 ├── metrics.py       # Core ratios, exposure-normalized metrics, and actuarial primitives
-├── completion.py    # Completion factor and IBNR calculations
-├── experience.py    # Grouped experience summaries
-├── rolling.py       # Rolling-window experience summaries
-├── trend.py         # Period-over-period trend summaries
+├── completion.py    # Completion factors, completed claims, IBNR, and claim triangles
+├── experience.py    # Grouped experience summaries and views
+├── rolling.py       # Calendar-aware rolling-window experience summaries
+├── trend.py         # Trend factors, projection, and period-over-period summaries
 ├── components.py    # Component summaries and driver analysis
+├── contribution.py  # Share-of-total and contribution-to-change primitives
+├── cohorts.py       # Cohort and duration summaries
+├── forecast.py      # Rate-based forecasting and actual-to-expected comparison
 ├── periods.py       # Period and duration helpers
 ├── compare.py       # Variance and change calculations
-├── validation.py    # Validation utilities
+├── columns.py       # Column validation and small DataFrame helpers
+├── profiles.py      # Light-touch domain profile defaults
 └── reporting.py     # Basic Excel report export
 ```
+
+Most workflow functions are also importable directly from the top level, e.g.
+`from actuarialpy import summarize_experience, rolling_summary, trend_summary`.
 
 ## Basic metrics
 
 ```python
-from actuarialpy.metrics import loss_ratio, pmpm, actual_to_expected
+from actuarialpy import loss_ratio, pmpm, actual_to_expected
 
 loss_ratio(850_000, 1_000_000)
 # 0.85
@@ -55,6 +62,10 @@ pmpm(1_000_000, 2_000)
 actual_to_expected(1_100_000, 1_000_000)
 # 1.10
 ```
+
+The metric primitives are vectorized and type-stable: scalar inputs return a
+native `float`, and `pandas.Series` inputs return a `Series` with the original
+index preserved (Series are combined positionally, so they are assumed aligned).
 
 ## Completion factors and IBNR
 
@@ -146,15 +157,16 @@ ActuarialPy intentionally does not automatically rename `total_expense` to `tota
 
 ## Rolling summaries
 
-Rolling summaries are useful for reviewing longer-term experience patterns, such as rolling 12-month MLR.
+Rolling summaries are useful for reviewing longer-term experience patterns, such as rolling 12-month MLR. The window is measured in calendar periods: each group is reindexed onto a dense, gap-free grid before rolling, so a missing month does not silently stretch the window across extra calendar time. Provide `freq` (a pandas offset alias such as `"MS"`) when the data has gaps or is not regularly spaced.
 
 ```python
-from actuarialpy.rolling import rolling_summary
+from actuarialpy import rolling_summary
 
 rolling = rolling_summary(
     claims,
     date_col="incurred_date",
     window=12,
+    freq="MS",
     expense_cols=["total_expense"],
     revenue_cols=["premium"],
     exposure_cols=["member_months"],
@@ -227,4 +239,10 @@ The output shows prior PMPM, current PMPM, PMPM change, component trend, and con
 
 ## Development status
 
-ActuarialPy is in early development. The current focus is on reliable core experience-analysis workflows before adding more complex features such as forecasting, seasonality, credibility, or advanced reserving methods.
+ActuarialPy is in early development. The current focus is reliable core
+experience-analysis workflows. Planned additions, kept deliberately separate
+from this corrections-focused release, include seasonality indices, credibility
+weighting, enrollment-to-member-month exposure construction, and deterministic
+chain-ladder factor development. Stochastic loss modeling, simulation, and
+extreme-value/tail work live in the companion packages (`lossmodels`,
+`risksim`, and `extremeloss`).
