@@ -11,6 +11,7 @@ from actuarialpy.metrics import (
     medical_loss_ratio,
     pepm,
     per_exposure,
+    permissible_loss_ratio,
     pmpm,
     pspm,
     pure_premium,
@@ -19,15 +20,35 @@ from actuarialpy.metrics import (
     safe_divide,
     severity,
 )
-from actuarialpy.completion import (
-    complete_claim_components,
-    complete_claims,
-    completed_from_factor,
+from actuarialpy.reserving import (
+    ChainLadder,
+    InsufficientDataWarning,
+    chain_ladder_by,
+    completion_factors,
+    completion_factors_by,
     ibnr,
     lag_months,
     make_completion_triangle,
     validate_completion_factors,
 )
+from actuarialpy.credibility import (
+    Buhlmann,
+    BuhlmannStraub,
+    credibility_weighted_estimate,
+)
+from actuarialpy.lifecycle import (
+    STATUS_ACTIVE,
+    STATUS_FIRST_YEAR,
+    STATUS_TERMED,
+    add_months_in_force,
+    add_tenure,
+    derive_status,
+    earned_exposure,
+    is_in_force,
+)
+from actuarialpy.banding import assign_band, summarize_by_band
+from actuarialpy.margins import add_margin, margin, margin_ratio
+from actuarialpy.pooling import excess_over_threshold, pool_losses
 from actuarialpy.experience import status_summary, summarize_experience, summarize_views
 from actuarialpy.expected import summarize_actual_vs_expected
 from actuarialpy.claimants import summarize_claimants, top_claimants, large_claimant_flags, claim_concentration
@@ -54,6 +75,7 @@ __all__ = [
     "medical_loss_ratio",
     "pepm",
     "per_exposure",
+    "permissible_loss_ratio",
     "pmpm",
     "pspm",
     "pure_premium",
@@ -61,9 +83,11 @@ __all__ = [
     "required_revenue",
     "safe_divide",
     "severity",
-    "complete_claim_components",
-    "complete_claims",
-    "completed_from_factor",
+    "ChainLadder",
+    "InsufficientDataWarning",
+    "chain_ladder_by",
+    "completion_factors",
+    "completion_factors_by",
     "ibnr",
     "lag_months",
     "make_completion_triangle",
@@ -89,6 +113,29 @@ __all__ = [
     "component_driver_analysis",
     "component_trend",
     "summarize_components",
+    # credibility
+    "Buhlmann",
+    "BuhlmannStraub",
+    "credibility_weighted_estimate",
+    # lifecycle
+    "STATUS_ACTIVE",
+    "STATUS_FIRST_YEAR",
+    "STATUS_TERMED",
+    "add_months_in_force",
+    "add_tenure",
+    "derive_status",
+    "earned_exposure",
+    "is_in_force",
+    # banding
+    "assign_band",
+    "summarize_by_band",
+    # margins
+    "add_margin",
+    "margin",
+    "margin_ratio",
+    # large-loss pooling
+    "excess_over_threshold",
+    "pool_losses",
 ]
 
-__version__ = "0.6.1"
+__version__ = "0.12.0"

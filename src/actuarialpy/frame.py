@@ -2,18 +2,24 @@
 
 from __future__ import annotations
 
+from collections.abc import Iterable
 from dataclasses import dataclass, replace
-from typing import Any
+from typing import Any, cast
 
 import pandas as pd
 from pandas.api.types import is_numeric_dtype
 
+from actuarialpy.banding import summarize_by_band
 from actuarialpy.claimants import claim_concentration, summarize_claimants, top_claimants
 from actuarialpy.cohorts import cohort_summary, duration_summary
 from actuarialpy.columns import as_list, sum_columns, validate_columns
 from actuarialpy.components import component_driver_analysis, summarize_components
+from actuarialpy.credibility import credibility_weighted_estimate
 from actuarialpy.expected import summarize_actual_vs_expected
 from actuarialpy.experience import status_summary, summarize_experience, summarize_views
+from actuarialpy.lifecycle import derive_status
+from actuarialpy.metrics import per_exposure, safe_divide
+from actuarialpy.pooling import pool_losses
 from actuarialpy.rolling import rolling_summary
 from actuarialpy.trend import trend_summary
 
@@ -61,14 +67,14 @@ class Experience:
         if self.copy:
             object.__setattr__(self, "data", self.data.copy())
 
-        required = list(self.expense) + list(self.revenue) + list(self.exposure)
+        required = as_list(self.expense) + as_list(self.revenue) + as_list(self.exposure)
         if self.date is not None:
             required.append(self.date)
         validate_columns(self.data, required)
-        _validate_exposure_names(list(self.exposure))
-        _validate_numeric_columns(self.data, list(self.expense), role="Expense")
-        _validate_numeric_columns(self.data, list(self.revenue), role="Revenue")
-        _validate_numeric_columns(self.data, list(self.exposure), role="Exposure")
+        _validate_exposure_names(as_list(self.exposure))
+        _validate_numeric_columns(self.data, as_list(self.expense), role="Expense")
+        _validate_numeric_columns(self.data, as_list(self.revenue), role="Revenue")
+        _validate_numeric_columns(self.data, as_list(self.exposure), role="Exposure")
 
     def with_roles(
         self,
@@ -109,7 +115,7 @@ class Experience:
         if query is not None:
             data = self.data.query(query)
         else:
-            data = self.data.loc[mask]
+            data = cast("pd.DataFrame", self.data.loc[mask])
         if copy:
             data = data.copy()
         return self.with_roles(data=data, copy=False)
@@ -126,7 +132,7 @@ class Experience:
             **kwargs,
         )
 
-    def views(self, views: dict[str, str | list[str] | None], **kwargs: Any) -> dict[str, pd.DataFrame]:
+    def views(self, views: dict[str, str | Iterable[str] | None], **kwargs: Any) -> dict[str, pd.DataFrame]:
         """Create several named grouped experience views."""
         return summarize_views(
             self.data,
@@ -367,6 +373,132 @@ class Experience:
             profile=kwargs.pop("profile", self.profile),
             **kwargs,
         )
+
+    def with_status(
+        self,
+        *,
+        effective_col: str,
+        as_of: Any,
+        termination_col: str | None = None,
+        first_year_months: int = 12,
+        status_col: str = "status",
+        labels: dict[str, str] | None = None,
+    ) -> "Experience":
+        """Return a new ``Experience`` with a derived lifecycle status column.
+
+        Derives active / first-year / termed from effective and termination dates
+        as of a reference date (see :func:`actuarialpy.derive_status`). Summarize
+        the result with :meth:`by_status`.
+        """
+        data = derive_status(
+            self.data,
+            effective_col=effective_col,
+            as_of=as_of,
+            termination_col=termination_col,
+            first_year_months=first_year_months,
+            status_col=status_col,
+            labels=labels,
+        )
+        return self.with_roles(data=data, copy=False)
+
+    def by_band(
+        self,
+        value_col: str,
+        bands: Any,
+        *,
+        labels: Any = None,
+        **kwargs: Any,
+    ) -> pd.DataFrame:
+        """Summarize experience by a size band on ``value_col`` (see ``summarize_by_band``)."""
+        return summarize_by_band(
+            self.data,
+            value_col,
+            bands,
+            labels=labels,
+            expense_cols=kwargs.pop("expense_cols", kwargs.pop("expense", self.expense)),
+            revenue_cols=kwargs.pop("revenue_cols", kwargs.pop("revenue", self.revenue)),
+            exposure_cols=kwargs.pop("exposure_cols", kwargs.pop("exposure", self.exposure)),
+            profile=kwargs.pop("profile", self.profile),
+            **kwargs,
+        )
+
+    def margin(
+        self,
+        groupby: str | list[str] | None = None,
+        *,
+        margin_col: str = "margin",
+        ratio_col: str = "margin_ratio",
+        per_exposure_col: str | None = None,
+        **kwargs: Any,
+    ) -> pd.DataFrame:
+        """Underwriting margin (revenue net of expense) by optional grouping.
+
+        Aggregates the bound expense and revenue roles with :meth:`by`, then adds
+        the margin (``total_revenue - total_expense``), the margin ratio, and an
+        optional per-exposure margin.
+        """
+        summary = self.by(groupby, **kwargs)
+        summary[margin_col] = summary["total_revenue"] - summary["total_expense"]
+        summary[ratio_col] = safe_divide(summary[margin_col], summary["total_revenue"])
+        if per_exposure_col is not None:
+            exposure = self._single_exposure_or_none()
+            if exposure is None:
+                raise ValueError("A single bound exposure is required for per_exposure_col.")
+            summary[per_exposure_col] = per_exposure(summary[margin_col], summary[exposure])
+        return summary
+
+    def credibility_weighted(
+        self,
+        groupby: str | list[str],
+        *,
+        z: Any,
+        metric: str = "loss_ratio",
+        complement: float | None = None,
+        out_col: str | None = None,
+        **kwargs: Any,
+    ) -> pd.DataFrame:
+        """Blend each group's ``metric`` with a complement at credibility ``z``.
+
+        Computes the grouped summary (:meth:`by`), then blends ``metric`` toward
+        ``complement`` using ``z`` (see
+        :func:`actuarialpy.credibility_weighted_estimate`). ``z`` may be a scalar
+        or values aligned to the grouped rows. When ``complement`` is omitted the
+        book-level value of ``metric`` is used as the complement of credibility.
+        """
+        summary = self.by(groupby, **kwargs)
+        if metric not in summary.columns:
+            raise ValueError(f"metric '{metric}' is not in the summary columns: {list(summary.columns)}")
+        if complement is None:
+            complement = self.by(**kwargs)[metric].iloc[0]
+        name = out_col or f"credibility_weighted_{metric}"
+        summary[name] = credibility_weighted_estimate(summary[metric], complement, z)
+        return summary
+
+    def pool_claimants(
+        self,
+        claimant_col: str,
+        pooling_point: float,
+        *,
+        amount_cols: str | list[str] | None = None,
+        groupby: str | list[str] | None = None,
+        amount_name: str = "total_expense",
+        **kwargs: Any,
+    ) -> pd.DataFrame:
+        """Aggregate to claimant level and split each claimant into pooled/excess.
+
+        Summarizes the experience to claimant grain (:meth:`claimants`) and caps
+        each claimant's total at ``pooling_point`` (see
+        :func:`actuarialpy.pool_losses`), returning pooled and excess columns for
+        capped experience and the excess hand-off to tail modeling.
+        """
+        claimant_totals = summarize_claimants(
+            self.data,
+            claimant_col=claimant_col,
+            amount_cols=self.expense if amount_cols is None else amount_cols,
+            groupby=groupby,
+            amount_name=amount_name,
+        )
+        return pool_losses(claimant_totals, amount_name, pooling_point, **kwargs)
 
     def _resolve_date_col(self, date_col: str | None) -> str:
         resolved = date_col or self.date

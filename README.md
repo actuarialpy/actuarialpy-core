@@ -46,31 +46,49 @@ trend = exp.trend(
 ActuarialPy currently supports:
 
 - grouped experience summaries
-- loss ratio / MLR-style ratios
+- loss ratio / MLR-style ratios (default `loss_ratio`; `mlr` via the health profile)
 - PMPM, PSPM, PEPM, and generic per-exposure metrics
-- completion factor and IBNR calculations
+- development triangles and chain-ladder completion factors, overall or per segment (`reserving` module)
 - rolling-window experience summaries
 - period-over-period trend comparisons
 - component-level driver analysis
 - actual-versus-expected summaries
 - claimant/member concentration review
 - cohort and duration summaries
+- lifecycle status (active / first-year / termed) and in-force exposure
+- size banding and underwriting margins
+- greatest-accuracy credibility (Bühlmann, Bühlmann-Straub) and credibility weighting
+- large-loss pooling and the excess-over-threshold modeling hand-off
+- permissible (target / zero-margin) loss ratio
 - validation utilities for common data issues
+
+**Claims basis.** ActuarialPy does not complete claims for you. Completing claims
+from a factor is a single multiply best done in your own pipeline, and a factor in
+a separate table needs a join only you can define. Bind whatever claims you have:
+completed claims with the incurred date for an experience view, or paid claims with
+the paid date for a finance / paid-basis view. The `reserving` module holds the
+development work that is *not* a one-line multiply (triangles, lag, the IBNR
+identity) and consumes a compact origin x valuation aggregate, not line-level data.
 
 ## Package structure
 
 ```text
 actuarialpy/
 ├── frame.py        # Experience facade
-├── metrics.py      # Ratios, per-exposure metrics, frequency, severity, A/E
+├── metrics.py      # Ratios, per-exposure metrics, frequency, severity, A/E, permissible LR
 ├── experience.py   # Grouped experience summaries
-├── completion.py   # Completion factor and IBNR calculations
+├── reserving.py    # Triangles, chain-ladder completion factors, lag, IBNR identity
 ├── rolling.py      # Rolling-window summaries
 ├── trend.py        # Period and date-range trend summaries
 ├── components.py   # Component summaries and driver analysis
 ├── expected.py     # Actual-versus-expected summaries
 ├── claimants.py    # Claimant and concentration summaries
 ├── cohorts.py      # Cohort and duration summaries
+├── lifecycle.py    # Status (active/first-year/termed) and in-force exposure
+├── banding.py      # Size banding
+├── margins.py      # Underwriting margins
+├── credibility.py  # Bühlmann / Bühlmann-Straub credibility
+├── pooling.py      # Large-loss pooling and excess-over-threshold hand-off
 ├── periods.py      # Period and duration helpers
 └── columns.py      # Validation and column helpers
 ```
@@ -214,6 +232,135 @@ duration = exp.duration(
     max_duration_month=24,
 )
 ```
+
+## Lifecycle status and in-force exposure
+
+`with_status` derives an active / first-year / termed status from effective and
+termination dates as of a reference date, and returns a new `Experience` you can
+summarize by status.
+
+```python
+staged = exp.with_status(
+    effective_col="group_effective_date",
+    termination_col="group_termination_date",
+    as_of="2026-12-31",
+    first_year_months=12,
+)
+
+by_status = staged.by_status("status", entity_col="group_id")
+```
+
+The free functions `derive_status`, `add_tenure`, `is_in_force`,
+`add_months_in_force`, and `earned_exposure` are also available directly.
+
+## Size banding and margins
+
+```python
+by_band = exp.by_band(
+    "subscriber_count",
+    bands=[0, 5, 25, 100, float("inf")],
+    labels=["1-4", "5-24", "25-99", "100+"],
+)
+
+margins = exp.margin("group_id", per_exposure_col="margin_pmpm")
+```
+
+`margin` aggregates the bound expense and revenue roles, then adds the margin
+(`total_revenue - total_expense`), the margin ratio, and an optional
+per-exposure margin.
+
+## Credibility
+
+`credibility_weighted` blends each group's metric toward a complement at a given
+credibility Z. When the complement is omitted, the book-level value is used.
+
+```python
+blended = exp.credibility_weighted(
+    "group_id",
+    z=0.55,
+    metric="loss_ratio",
+)
+```
+
+The greatest-accuracy models `Buhlmann` and `BuhlmannStraub`, and the
+`credibility_weighted_estimate` primitive, are available as free functions.
+
+## Large-loss pooling
+
+Pooling caps large losses before they enter a group's experience and emits the
+excess for tail modeling. `pool_claimants` aggregates to claimant level and
+splits each claimant into pooled and excess amounts.
+
+```python
+pooled = exp.pool_claimants("member_id", pooling_point=100_000)
+
+# Excess-over-threshold sample to hand off to a tail/severity model
+from actuarialpy import excess_over_threshold
+
+claimants = exp.claimants(claimant_col="member_id")
+excess = excess_over_threshold(claimants, "total_expense", threshold=100_000, keep_cols="member_id")
+```
+
+Descriptive large-claim flagging and concentration stay in the claimant review
+helpers (`large_claimant_flags`, `claim_concentration`); pooling adds the capping
+transform and the `excess`/`extremeloss`/`lossmodels` hand-off.
+
+## Reserving: triangles and completion factors
+
+Build a cumulative development triangle from a both-dates (incurred x valuation)
+aggregate, then estimate completion factors with chain-ladder. The triangle's
+input is a compact months x months aggregate -- produce it upstream with a
+`GROUP BY incurred_month, paid_month` so the line-level volume stays in the
+warehouse.
+
+```python
+from actuarialpy import make_completion_triangle, ChainLadder, completion_factors
+
+triangle = make_completion_triangle(
+    dev,                     # rows of (incurred date, valuation date, paid amount)
+    origin_col="incurred_month",
+    valuation_col="valuation_month",
+    amount_col="paid",
+    cumulative=True,
+)
+
+cl = ChainLadder.fit(triangle, method="volume", tail=1.0)
+cl.completion_factors      # 1 / cdf by lag, in (0, 1]
+cl.age_to_age              # link (age-to-age) factors
+cl.project(triangle)       # per-origin latest, ultimate, IBNR
+
+# or just the factors:
+factors = completion_factors(triangle)
+```
+
+The resulting completion factors are divide-convention (`completed = paid /
+factor`), so they apply to incomplete claims directly. Completion itself stays in
+your pipeline -- the library estimates the factors and arranges the data, but does
+not apply them to your experience extract.
+
+### Per-segment factors
+
+Fit a separate pattern for each line of business (or any split) from one frame:
+
+```python
+from actuarialpy import chain_ladder_by, completion_factors_by
+
+patterns = chain_ladder_by(dev, groupby="line_of_business",
+                           origin_col="incurred_month", valuation_col="valuation_month",
+                           amount_col="paid")
+patterns["A"].completion_factors            # factors for one segment
+
+factors = completion_factors_by(dev, groupby=["line_of_business", "product_code"],
+                                origin_col="incurred_month", valuation_col="valuation_month",
+                                amount_col="paid")                 # tidy table, all segments
+```
+
+Segments too thin to fit are handled by `on_insufficient`: `"raise"` (default,
+names the segment), `"skip"`, or `"aggregate"` (use the pooled whole-data
+pattern). The `warn` flag and the standard `warnings` filters control reporting --
+`on_insufficient="skip", warn=False` ignores thin segments silently. Segmenting
+trades credibility for responsiveness, so very thin segments are often better
+served by the aggregate pattern or by blending toward it.
 
 ## Functional API
 

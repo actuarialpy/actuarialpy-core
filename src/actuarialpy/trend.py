@@ -90,6 +90,7 @@ def _comparison_masks(
             raise ValueError(
                 "date_col, prior_start, prior_end, current_start, and current_end must all be supplied together."
             )
+        assert date_col is not None  # narrowed by the guard above
         return (
             _date_range_mask(df, date_col, prior_start, prior_end),
             _date_range_mask(df, date_col, current_start, current_end),

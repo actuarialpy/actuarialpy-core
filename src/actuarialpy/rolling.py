@@ -31,7 +31,7 @@ def rolling_summary(
     exposure_cols: str | Iterable[str] | None = None,
     min_periods: int | None = None,
     drop_incomplete: bool = True,
-    ratio_col: str = "mlr",
+    ratio_col: str = "loss_ratio",
 ) -> pd.DataFrame:
     """Calculate rolling sums and ratios by period and optional grouping.
 
