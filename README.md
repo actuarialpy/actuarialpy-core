@@ -1,8 +1,8 @@
 # ActuarialPy
 
-ActuarialPy is a Python toolkit for actuarial experience analysis. It provides reusable functions for common actuarial calculations, grouped experience summaries, completion factor application, rolling experience views, trend comparisons, and component-level driver analysis.
+ActuarialPy is a Python toolkit for actuarial experience analysis. It provides reusable functions for common actuarial calculations, grouped experience summaries, completion (loss development) factor application, rolling experience views, trend comparisons, component-level driver analysis, lifecycle/in-force handling, size banding, concentration, margins, and large-loss pooling.
 
-The package is designed to sit on top of pandas. It does not attempt to replace pandas or wrap ordinary DataFrame operations. Instead, it focuses on calculations and workflows where actuarial meaning matters, such as aggregating before calculating ratios, completing claims with valuation factors, calculating PMPM metrics, and comparing experience across periods.
+The package is general across lines of business — life, health, and pension under the SOA, and property/casualty under the CAS. Terminology defaults to the line-agnostic vocabulary (loss ratio, exposure, premium, losses); health is supported as a first-class application through the `health` profile (which produces familiar names such as `mlr` and per-member-per-month metrics). It is designed to sit on top of pandas rather than replace it, focusing on calculations where actuarial meaning matters, such as aggregating before calculating ratios, completing claims with development factors, normalizing by exposure, and comparing experience across periods.
 
 ## Installation
 
@@ -16,14 +16,18 @@ pip install -e .
 
 ActuarialPy currently supports:
 
-- Basic actuarial metrics such as loss ratio, PMPM, PSPM, frequency, severity, pure premium, and actual-to-expected.
-- Claim completion calculations using paid completion factors.
-- IBNR calculation from paid and completed claims.
-- Grouped experience summaries by fields such as group, product, line of business, and incurred period.
-- Rolling-window summaries, including rolling 12-month MLR and PMPM views.
+- Basic actuarial metrics such as loss ratio, per-exposure metrics (PMPM/PSPM/PEPM as health conveniences), frequency, severity, pure premium, combined ratio, actual-to-expected, and the permissible (target/zero-margin) loss ratio.
+- Claim completion (loss development) calculations using paid completion factors, and IBNR.
+- Grouped experience summaries by fields such as group, product, line of business, and incurred period (ratio column defaults to `loss_ratio`).
+- Rolling-window summaries, including rolling 12-period loss ratio and per-exposure views.
 - Trend summaries comparing two periods.
-- Component-level driver analysis for categories such as inpatient, outpatient, professional, pharmacy, rebates, and non-fee-for-service expenses.
+- Component-level driver analysis for arbitrary cost categories.
 - Credibility weighting, including Bühlmann and Bühlmann-Straub models and a credibility-weighting primitive.
+- Lifecycle handling: derive active / first-year / termed status and tenure from effective and termination dates, in-force flags, and exposure clipping / earned exposure.
+- Size banding by any numeric measure, with per-band experience summaries.
+- Concentration analysis (top-N cumulative and share) at group or member/claimant grain.
+- Underwriting margin (premium net of losses and loadings) and per-exposure margin.
+- Large-loss pooling: flagging, capping at a pooling point (pooled/excess split), large-loss summaries, and the excess-over-threshold hand-off to the modeling satellites.
 - Validation utilities for common actuarial data issues.
 
 ## Package structure
@@ -39,11 +43,16 @@ src/actuarialpy/
 ├── contribution.py  # Share-of-total and contribution-to-change primitives
 ├── credibility.py   # Bühlmann / Bühlmann-Straub models and the weighting primitive
 ├── cohorts.py       # Cohort and duration summaries
+├── lifecycle.py     # Status (active/first-year/termed), tenure, in-force, earned exposure
+├── banding.py       # Configurable size bands and per-band summaries
+├── concentration.py # Top-N cumulative and share (group or member/claimant grain)
+├── margins.py       # Underwriting margin and per-exposure margin
+├── pooling.py       # Large-loss flagging, pooling/capping, excess-over-threshold hand-off
 ├── forecast.py      # Rate-based forecasting and actual-to-expected comparison
 ├── periods.py       # Period and duration helpers
 ├── compare.py       # Variance and change calculations
 ├── columns.py       # Column validation and small DataFrame helpers
-├── profiles.py      # Light-touch domain profile defaults
+├── profiles.py      # Light-touch domain profile defaults (e.g. health -> mlr)
 └── reporting.py     # Basic Excel report export
 ```
 

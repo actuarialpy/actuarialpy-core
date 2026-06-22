@@ -1,5 +1,51 @@
 # Changelog
 
+## 0.7.0
+
+This release generalizes the package across lines of business (life, health, and
+pension under the SOA; property/casualty under the CAS) and adds a lifecycle
+layer and a set of experience-analysis modules. Health remains a first-class
+application via the `health` profile.
+
+### Changed
+
+- **Default ratio is now `loss_ratio`** (general across lines), not the prior
+  `expense_revenue_ratio` placeholder. `summarize_experience` and
+  `rolling_summary` name the post-aggregation ratio column `loss_ratio` unless a
+  profile or explicit name overrides it. The `health` profile still produces
+  `mlr` and the `life` profile `benefit_ratio`, so existing health/life calls
+  that pass `profile=...` are unaffected. Calls that relied on the old default
+  column name should read `loss_ratio` (or pass `ratio_name=`/`ratio_col=`).
+
+### Added
+
+- **Lifecycle module** (`actuarialpy.lifecycle`): derive status and tenure from
+  effective/termination dates rather than requiring a precomputed label, and
+  clip exposure to the in-force window.
+  - `derive_status` (active / first-year / termed, with `first_year_months` as a
+    parameter and optional label remapping), `add_tenure`, `is_in_force`,
+    `add_months_in_force`, and `earned_exposure` (prorated). The module derives
+    the distinction and provides the windowing levers; it deliberately does not
+    encode differential cohort treatment, which is a pricing-methodology choice.
+- **Banding module** (`actuarialpy.banding`): `assign_band` and
+  `summarize_by_band` for configurable size bands by any numeric column
+  (subscriber/member count, exposure, premium, TIV).
+- **Concentration module** (`actuarialpy.concentration`): `concentration_curve`,
+  `concentration_summary`, and `top_n_share` — grain-agnostic, for group-level
+  or member/claimant-level concentration.
+- **Margins module** (`actuarialpy.margins`): `margin`, `margin_ratio`, and
+  `add_margin` (premium net of losses and expense loadings, with optional ratio
+  and per-exposure margin).
+- **Large-loss / pooling module** (`actuarialpy.pooling`): `flag_large_losses`,
+  `pool_losses` (cap at a pooling point → pooled/excess split), and
+  `large_loss_summary`, plus `excess_over_threshold` — the deterministic
+  excess-over-threshold hand-off that feeds tail/severity/aggregate modeling in
+  the satellite packages (`extremeloss`, `lossmodels`, `risksim`).
+- **`permissible_loss_ratio`** in `metrics` — the permissible / target /
+  zero-margin loss ratio, `1 - expense_ratio - profit_provision` (the CAS PLR on
+  a premium basis).
+
+
 ## 0.6.1
 
 ### Changed

@@ -49,8 +49,10 @@ def summarize_experience(
     Amounts and exposures are aggregated first. Ratios and per-exposure metrics
     are calculated after aggregation, which avoids averaging row-level ratios.
 
-    ``profile`` only supplies light defaults such as ``ratio_col='mlr'`` for
-    health. It does not rename total expense or total revenue.
+    ``profile`` only supplies light defaults. By default the ratio column is
+    named ``loss_ratio`` (general across lines of business); the ``health``
+    profile names it ``mlr`` and the ``life`` profile ``benefit_ratio``. The
+    profile does not rename total expense or total revenue.
     """
     groups = as_list(groupby)
     expenses = as_list(expense_cols)
@@ -64,7 +66,7 @@ def summarize_experience(
     if ratio_name is not None:
         ratio_col = ratio_name
     if ratio_col is None:
-        ratio_col = get_profile_defaults(profile).get("ratio_col", "expense_revenue_ratio")
+        ratio_col = get_profile_defaults(profile).get("ratio_col", "loss_ratio")
 
     amount_cols = list(dict.fromkeys(expenses + revenues + exposures))
     if groups:

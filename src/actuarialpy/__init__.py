@@ -4,6 +4,7 @@ The most commonly used workflows are re-exported here so they are importable
 directly from the top level, e.g. ``from actuarialpy import summarize_experience``.
 """
 
+from actuarialpy.banding import assign_band, summarize_by_band
 from actuarialpy.cohorts import (
     cohort_summary,
     cohort_summary_by_period,
@@ -38,6 +39,11 @@ from actuarialpy.components import (
     component_trend,
     summarize_components,
 )
+from actuarialpy.concentration import (
+    concentration_curve,
+    concentration_summary,
+    top_n_share,
+)
 from actuarialpy.contribution import (
     component_contribution,
     contribution_to_change,
@@ -60,6 +66,17 @@ from actuarialpy.forecast import (
     forecast_experience,
     forecast_from_rate,
 )
+from actuarialpy.lifecycle import (
+    STATUS_ACTIVE,
+    STATUS_FIRST_YEAR,
+    STATUS_TERMED,
+    add_months_in_force,
+    add_tenure,
+    derive_status,
+    earned_exposure,
+    is_in_force,
+)
+from actuarialpy.margins import add_margin, margin, margin_ratio
 from actuarialpy.metrics import (
     actual_to_expected,
     combined_ratio,
@@ -70,6 +87,7 @@ from actuarialpy.metrics import (
     medical_loss_ratio,
     pepm,
     per_exposure,
+    permissible_loss_ratio,
     pmpm,
     pspm,
     pure_premium,
@@ -84,6 +102,12 @@ from actuarialpy.periods import (
     months_between,
     period_label,
     to_period,
+)
+from actuarialpy.pooling import (
+    excess_over_threshold,
+    flag_large_losses,
+    large_loss_summary,
+    pool_losses,
 )
 from actuarialpy.reporting import to_excel_report
 from actuarialpy.rolling import rolling_summary
@@ -107,6 +131,7 @@ __all__ = [
     "medical_loss_ratio",
     "pepm",
     "per_exposure",
+    "permissible_loss_ratio",
     "pmpm",
     "pspm",
     "pure_premium",
@@ -169,6 +194,31 @@ __all__ = [
     "months_between",
     "period_label",
     "to_period",
+    # lifecycle (status / tenure / in-force / earned exposure)
+    "STATUS_ACTIVE",
+    "STATUS_FIRST_YEAR",
+    "STATUS_TERMED",
+    "add_months_in_force",
+    "add_tenure",
+    "derive_status",
+    "earned_exposure",
+    "is_in_force",
+    # banding
+    "assign_band",
+    "summarize_by_band",
+    # concentration
+    "concentration_curve",
+    "concentration_summary",
+    "top_n_share",
+    # margins
+    "add_margin",
+    "margin",
+    "margin_ratio",
+    # large-loss / pooling
+    "excess_over_threshold",
+    "flag_large_losses",
+    "large_loss_summary",
+    "pool_losses",
     # column / validation helpers
     "as_list",
     "ensure_unique_keys",
@@ -179,4 +229,4 @@ __all__ = [
     "to_excel_report",
 ]
 
-__version__ = "0.6.1"
+__version__ = "0.7.0"

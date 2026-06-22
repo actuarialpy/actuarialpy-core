@@ -30,7 +30,7 @@ def rolling_summary(
     freq: str | None = None,
     min_periods: int | None = None,
     drop_incomplete: bool = True,
-    ratio_col: str = "mlr",
+    ratio_col: str = "loss_ratio",
 ) -> pd.DataFrame:
     """Calculate calendar-aware rolling sums and ratios by period and grouping.
 
@@ -96,7 +96,9 @@ def rolling_summary(
 
         out = pd.DataFrame(index=range(n))
         for col, value in zip(groups, key_tuple):
-            out[col] = value
+            # value is a groupby key (Hashable); pandas-stubs does not match the
+            # scalar-broadcast __setitem__ overload for it. Valid at runtime.
+            out[col] = value  # type: ignore[call-overload]
         out["period_start"] = [full_idx[max(0, i - window + 1)] for i in range(n)]
         out["period_end"] = list(full_idx)
         out["months_available"] = [min(i + 1, window) for i in range(n)]

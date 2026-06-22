@@ -127,3 +127,20 @@ def required_revenue(expense: Any, target_ratio: Any) -> Any:
 def indicated_change(required: Any, current: Any) -> Any:
     """Indicated change from current to required amount."""
     return safe_divide(required, current) - 1
+
+
+def permissible_loss_ratio(expense_ratio: Any, profit_provision: Any = 0.0) -> Any:
+    """Permissible (target / break-even) loss ratio.
+
+    ``PLR = 1 - expense_ratio - profit_provision`` where both loadings are
+    expressed as a fraction of premium. Also called the zero-margin or target
+    loss ratio: the loss ratio at which premium exactly covers losses, expenses,
+    and the profit/contingency provision. A "zero-margin loss ratio covering
+    allocated overhead" is this with ``profit_provision=0`` and ``expense_ratio``
+    set to the overhead load.
+
+    Works element-wise on scalars or Series. (Shops that load fixed expenses on a
+    loss basis instead use ``(1 - V - Q) / (1 + G)``; this function implements the
+    premium-basis form.)
+    """
+    return 1.0 - expense_ratio - profit_provision

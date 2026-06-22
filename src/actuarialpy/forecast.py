@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Iterable
+from typing import Literal
 
 import pandas as pd
 
@@ -62,7 +63,7 @@ def compare_actual_to_expected(
     on: str | Iterable[str],
     actual_col: str,
     expected_col: str,
-    how: str = "left",
+    how: Literal["left", "right", "outer", "inner", "cross"] = "left",
 ) -> pd.DataFrame:
     """Join actual and expected tables and calculate A/E and variance metrics."""
     keys = as_list(on)
