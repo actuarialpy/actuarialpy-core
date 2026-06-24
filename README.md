@@ -1,379 +1,308 @@
 # ActuarialPy
 
-ActuarialPy is an experience-centered Python toolkit for actuarial analysis. It provides a lightweight `Experience` object for working with claims, losses, benefits, revenue, premium, exposure, and time-based experience data.
+[![Python](https://img.shields.io/badge/python-3.10%2B-blue)]()
+[![License](https://img.shields.io/badge/license-MIT-green)]()
 
-The core workflow is to define the actuarial roles of a dataset once, then use the object to produce common analyses such as experience summaries, rolling views, period-over-period trends, component drivers, actual-versus-expected summaries, claimant concentration reviews, and cohort/duration summaries.
+An experience-centered Python toolkit for actuarial analysis on tabular data.
+
+---
+
+## Overview
+
+ActuarialPy turns a claims / exposure / premium table into a set of standard
+actuarial analyses with very little ceremony. You define the actuarial *roles* of
+your columns once — what is expense, revenue, exposure, and the date — and then ask
+the resulting `Experience` object for summaries, rolling views, trends, driver
+analyses, actual-versus-expected, concentration reviews, cohort/duration tables,
+and more. The same role assignments are reused across every analysis, so you never
+re-specify which column is premium or how to compute a loss ratio.
+
+Alongside the `Experience` object, every calculation is also available as a plain
+function (loss ratios, PMPM/PSPM/PEPM, trend factors, chain-ladder completion
+factors, credibility formulas), so the library works equally well for one-off
+calculations and for building larger pipelines.
+
+It is deterministic and pandas-native: the only dependencies are `numpy` and
+`pandas`, and outputs are ordinary DataFrames and Series you can inspect, join, and
+export.
+
+## Highlights
+
+- **The `Experience` object** — assign column roles once, then produce grouped
+  summaries, rolling windows, trends, component drivers, actual-vs-expected,
+  claimant concentration, cohort/duration tables, size bands, and lifecycle views.
+- **Ratios and per-exposure metrics** — loss ratio, medical loss ratio, combined
+  and expense ratios, pure premium, frequency, severity, and PMPM / PSPM / PEPM /
+  generic per-exposure metrics.
+- **Reserving** — development triangles and chain-ladder completion factors,
+  ultimates, and IBNR, overall or per segment, with completeness validation.
+- **Credibility** — greatest-accuracy credibility (Bühlmann and Bühlmann-Straub)
+  and direct credibility-weighting of any estimate.
+- **Trend and forecasting** — annualized trend, midpoint trend factors, projecting
+  values forward, period-over-period comparisons, and rate-based forecasts.
+- **Lifecycle and exposure** — in-force determination, earned exposure, tenure,
+  and active / first-year / termed status.
+- **Pooling, banding, and margins** — pooling points and excess losses, size
+  banding, and underwriting margins.
+- **Reporting** — write a dictionary of analysis views to a multi-sheet workbook.
 
 ## Installation
 
-For local development:
+```bash
+pip install actuarialpy
+```
+
+From a source checkout:
 
 ```bash
 pip install -e .
 ```
 
-## Basic usage
-
-```python
-import actuarialpy as ap
-
-exp = ap.Experience(
-    claims,
-    expense="total_expense",
-    revenue="premium",
-    exposure="member_months",
-    date="incurred_date",
-    profile="health",
-)
-```
-
-Once the experience object is created, the same column roles are reused across analyses.
-
-```python
-summary = exp.by(["group_id", "product_code"])
-rolling = exp.rolling(window=12, groupby="product_code")
-trend = exp.trend(
-    prior_start="2025-01-01",
-    prior_end="2025-12-31",
-    current_start="2026-01-01",
-    current_end="2026-12-31",
-    groupby="product_code",
-)
-```
-
-## Core capabilities
-
-ActuarialPy currently supports:
-
-- grouped experience summaries
-- loss ratio / MLR-style ratios (default `loss_ratio`; `mlr` via the health profile)
-- PMPM, PSPM, PEPM, and generic per-exposure metrics
-- development triangles and chain-ladder completion factors, overall or per segment (`reserving` module)
-- rolling-window experience summaries
-- period-over-period trend comparisons
-- component-level driver analysis
-- actual-versus-expected summaries
-- claimant/member concentration review
-- cohort and duration summaries
-- lifecycle status (active / first-year / termed) and in-force exposure
-- size banding and underwriting margins
-- greatest-accuracy credibility (Bühlmann, Bühlmann-Straub) and credibility weighting
-- large-loss pooling and the excess-over-threshold modeling hand-off
-- permissible (target / zero-margin) loss ratio
-- validation utilities for common data issues
-
-**Claims basis.** ActuarialPy does not complete claims for you. Completing claims
-from a factor is a single multiply best done in your own pipeline, and a factor in
-a separate table needs a join only you can define. Bind whatever claims you have:
-completed claims with the incurred date for an experience view, or paid claims with
-the paid date for a finance / paid-basis view. The `reserving` module holds the
-development work that is *not* a one-line multiply (triangles, lag, the IBNR
-identity) and consumes a compact origin x valuation aggregate, not line-level data.
+Requires Python `>=3.10`; depends only on `numpy` and `pandas`.
 
 ## Package structure
 
 ```text
 actuarialpy/
-├── frame.py        # Experience facade
-├── metrics.py      # Ratios, per-exposure metrics, frequency, severity, A/E, permissible LR
-├── experience.py   # Grouped experience summaries
-├── reserving.py    # Triangles, chain-ladder completion factors, lag, IBNR identity
-├── rolling.py      # Rolling-window summaries
-├── trend.py        # Period and date-range trend summaries
-├── components.py   # Component summaries and driver analysis
-├── expected.py     # Actual-versus-expected summaries
-├── claimants.py    # Claimant and concentration summaries
-├── cohorts.py      # Cohort and duration summaries
-├── lifecycle.py    # Status (active/first-year/termed) and in-force exposure
-├── banding.py      # Size banding
-├── margins.py      # Underwriting margins
-├── credibility.py  # Bühlmann / Bühlmann-Straub credibility
-├── pooling.py      # Large-loss pooling and excess-over-threshold hand-off
-├── periods.py      # Period and duration helpers
-└── columns.py      # Validation and column helpers
+├── frame.py         # the Experience object (role-aware analysis facade)
+├── experience.py    # grouped experience summaries and multi-view summaries
+├── rolling.py       # rolling-window experience summaries
+├── trend.py         # trend factors, projections, period-over-period comparisons
+├── forecast.py      # rate-based forecasting and actual-vs-forecast
+├── components.py    # component / driver decompositions
+├── contribution.py  # share-of-total and contribution-to-change
+├── expected.py      # actual-versus-expected summaries
+├── claimants.py     # large-claimant flags and concentration
+├── pooling.py       # pooling points and excess losses
+├── cohorts.py       # cohort and duration summaries
+├── lifecycle.py     # in-force, earned exposure, tenure, status
+├── banding.py       # size banding and banded summaries
+├── margins.py       # underwriting margins
+├── metrics.py       # ratios and per-exposure metrics
+├── credibility.py   # Bühlmann / Bühlmann-Straub credibility
+├── reserving.py     # triangles, chain ladder, completion factors, IBNR
+├── periods.py       # period / duration column helpers
+├── profiles.py      # naming profiles (e.g. health vs. P&C terminology)
+└── reporting.py     # multi-sheet workbook export
 ```
 
-## Experience summaries
+## The Experience object
+
+Define the roles of your dataset once:
 
 ```python
+import actuarialpy as ap
+
+exp = ap.Experience(
+    claims,                      # a pandas DataFrame
+    expense="total_claims",      # the loss / claim amount column(s)
+    revenue="premium",           # the premium / revenue column(s)
+    exposure="member_months",    # the exposure column(s)
+    date="incurred_month",       # the time column
+    profile="health",            # naming profile (health -> MLR, PMPM terminology)
+)
+```
+
+Then reuse it across analyses:
+
+```python
+# grouped experience summary (totals + loss ratio / MLR by group)
 summary = exp.by(["group_id", "product_code"])
-```
 
-Typical output includes:
+# trailing-12-month rolling view per product
+rolling = exp.rolling(window=12, groupby="product_code")
 
-```text
-group_id
-product_code
-total_expense
-total_revenue
-member_months
-mlr
-expense_pmpm
-revenue_pmpm
-```
-
-You can also create multiple views from the same experience object:
-
-```python
-views = exp.views({
-    "overall": None,
-    "by_group": "group_id",
-    "by_product": "product_code",
-    "by_group_product": ["group_id", "product_code"],
-})
-```
-
-## Rolling summaries
-
-```python
-rolling = exp.rolling(
-    window=12,
-    groupby="product_code",
-)
-```
-
-Rolling summaries include `period_start` and `period_end`. Incomplete windows are omitted by default.
-
-## Trend summaries
-
-Trend comparisons can be based on date ranges:
-
-```python
+# period-over-period trend
 trend = exp.trend(
-    prior_start="2025-01-01",
-    prior_end="2025-12-31",
-    current_start="2026-01-01",
-    current_end="2026-12-31",
-    groupby="product_code",
-)
-```
-
-They can also be based on a period column:
-
-```python
-claims["year"] = claims["incurred_date"].dt.year
-
-trend = exp.trend(
-    period_col="year",
-    prior_period=2025,
-    current_period=2026,
-    groupby="product_code",
-)
-```
-
-## Component driver analysis
-
-Component driver analysis explains which categories drove the change in total experience.
-
-```python
-drivers = exp.components(
-    component_cols=[
-        "inpatient_claims",
-        "outpatient_claims",
-        "professional_claims",
-        "pharmacy_claims",
-        "pharmacy_rebates",
-        "non_ffs_expenses",
-    ],
-    prior_start="2025-01-01",
-    prior_end="2025-12-31",
-    current_start="2026-01-01",
-    current_end="2026-12-31",
-    groupby="product_code",
-)
-```
-
-## Actual versus expected
-
-```python
-ae = exp.actual_vs_expected(
-    expected="expected_expense",
-    groupby="product_code",
-)
-```
-
-This produces aggregated actual, expected, actual-to-expected, variance, and variance percentage fields.
-
-## Claimant review
-
-Claimant-level summaries are descriptive and do not apply pooling, capping, or stop-loss adjustments.
-
-```python
-claimants = exp.claimants(
-    claimant_col="member_id",
-    groupby="group_id",
-)
-
-top = exp.top_claimants(
-    claimant_col="member_id",
-    groupby="group_id",
-    n=25,
-)
-
-concentration = exp.claimant_concentration(
-    claimant_col="member_id",
-    groupby="group_id",
-)
-```
-
-## Cohort and duration summaries
-
-```python
-cohort = exp.cohort(
-    entity_col="group_id",
-    start_date_col="group_effective_date",
-    duration_months=12,
+    prior_start="2025-01-01", prior_end="2025-12-31",
+    current_start="2026-01-01", current_end="2026-12-31",
     groupby="product_code",
 )
 
-duration = exp.duration(
-    entity_col="group_id",
-    start_date_col="group_effective_date",
-    max_duration_month=24,
-)
+# several named cuts at once
+views = exp.views({"overall": None, "by_group": "group_id", "by_product": "product_code"})
 ```
 
-## Lifecycle status and in-force exposure
+`Experience` is immutable-friendly: `exp.filter(query="product_code == 'A'")` and
+`exp.with_roles(...)` return new objects without mutating the original.
 
-`with_status` derives an active / first-year / termed status from effective and
-termination dates as of a reference date, and returns a new `Experience` you can
-summarize by status.
+### Experience methods
 
-```python
-staged = exp.with_status(
-    effective_col="group_effective_date",
-    termination_col="group_termination_date",
-    as_of="2026-12-31",
-    first_year_months=12,
-)
+| Method | Produces |
+| --- | --- |
+| `by(groupby)` | grouped totals and ratios |
+| `views(views)` | a dict of named grouped summaries |
+| `rolling(window, groupby)` | rolling-window summaries |
+| `trend(prior/current windows, groupby)` | period-over-period trend |
+| `components(component_cols, ...)` / `component_summary(...)` | component / driver breakdowns |
+| `actual_vs_expected(expected, actual, ...)` | actual-versus-expected with variances |
+| `claimants(...)` / `top_claimants(...)` / `claimant_concentration(...)` | large-claimant and concentration views |
+| `pool_claimants(claimant_col, pooling_point)` | pooled vs. excess by claimant |
+| `cohort(...)` / `duration(...)` | cohort and duration summaries |
+| `by_band(value_col, bands)` | banded summaries |
+| `with_status(...)` / `by_status(...)` | lifecycle status assignment and summary |
+| `margin(...)` | underwriting margins |
+| `credibility_weighted(groupby, z, metric)` | credibility-blended estimates by group |
+| `filter(...)` / `with_roles(...)` | derive a new Experience |
 
-by_status = staged.by_status("status", entity_col="group_id")
-```
+## Reserving
 
-The free functions `derive_status`, `add_tenure`, `is_in_force`,
-`add_months_in_force`, and `earned_exposure` are also available directly.
-
-## Size banding and margins
-
-```python
-by_band = exp.by_band(
-    "subscriber_count",
-    bands=[0, 5, 25, 100, float("inf")],
-    labels=["1-4", "5-24", "25-99", "100+"],
-)
-
-margins = exp.margin("group_id", per_exposure_col="margin_pmpm")
-```
-
-`margin` aggregates the bound expense and revenue roles, then adds the margin
-(`total_revenue - total_expense`), the margin ratio, and an optional
-per-exposure margin.
-
-## Credibility
-
-`credibility_weighted` blends each group's metric toward a complement at a given
-credibility Z. When the complement is omitted, the book-level value is used.
-
-```python
-blended = exp.credibility_weighted(
-    "group_id",
-    z=0.55,
-    metric="loss_ratio",
-)
-```
-
-The greatest-accuracy models `Buhlmann` and `BuhlmannStraub`, and the
-`credibility_weighted_estimate` primitive, are available as free functions.
-
-## Large-loss pooling
-
-Pooling caps large losses before they enter a group's experience and emits the
-excess for tail modeling. `pool_claimants` aggregates to claimant level and
-splits each claimant into pooled and excess amounts.
-
-```python
-pooled = exp.pool_claimants("member_id", pooling_point=100_000)
-
-# Excess-over-threshold sample to hand off to a tail/severity model
-from actuarialpy import excess_over_threshold
-
-claimants = exp.claimants(claimant_col="member_id")
-excess = excess_over_threshold(claimants, "total_expense", threshold=100_000, keep_cols="member_id")
-```
-
-Descriptive large-claim flagging and concentration stay in the claimant review
-helpers (`large_claimant_flags`, `claim_concentration`); pooling adds the capping
-transform and the `excess`/`extremeloss`/`lossmodels` hand-off.
-
-## Reserving: triangles and completion factors
-
-Build a cumulative development triangle from a both-dates (incurred x valuation)
-aggregate, then estimate completion factors with chain-ladder. The triangle's
-input is a compact months x months aggregate -- produce it upstream with a
-`GROUP BY incurred_month, paid_month` so the line-level volume stays in the
-warehouse.
+Build a development triangle from transactional data, fit a chain ladder, and read
+off ultimates and IBNR. Origin and development (lag) periods are derived for you.
 
 ```python
 from actuarialpy import make_completion_triangle, ChainLadder, completion_factors
 
 triangle = make_completion_triangle(
-    dev,                     # rows of (incurred date, valuation date, paid amount)
+    claims,
     origin_col="incurred_month",
-    valuation_col="valuation_month",
+    valuation_col="paid_month",
     amount_col="paid",
     cumulative=True,
 )
 
 cl = ChainLadder.fit(triangle, method="volume", tail=1.0)
-cl.completion_factors      # 1 / cdf by lag, in (0, 1]
-cl.age_to_age              # link (age-to-age) factors
-cl.project(triangle)       # per-origin latest, ultimate, IBNR
+projection = cl.project(triangle)
+# projection columns: latest_lag, latest, development_factor, ultimate, ibnr
 
-# or just the factors:
-factors = completion_factors(triangle)
+# or just the completion factors (1 / cumulative development factor)
+factors = completion_factors(triangle, method="volume", tail=1.0)
 ```
 
-The resulting completion factors are divide-convention (`completed = paid /
-factor`), so they apply to incomplete claims directly. Completion itself stays in
-your pipeline -- the library estimates the factors and arranges the data, but does
-not apply them to your experience extract.
-
-### Per-segment factors
-
-Fit a separate pattern for each line of business (or any split) from one frame:
+`ChainLadder.fit` exposes `age_to_age`, `cdf`, `completion_factors`, `tail`, and
+`method`. Segment-level reserving is available without manually splitting data:
 
 ```python
 from actuarialpy import chain_ladder_by, completion_factors_by
 
-patterns = chain_ladder_by(dev, groupby="line_of_business",
-                           origin_col="incurred_month", valuation_col="valuation_month",
-                           amount_col="paid")
-patterns["A"].completion_factors            # factors for one segment
-
-factors = completion_factors_by(dev, groupby=["line_of_business", "product_code"],
-                                origin_col="incurred_month", valuation_col="valuation_month",
-                                amount_col="paid")                 # tidy table, all segments
+per_segment = chain_ladder_by(
+    claims, groupby="line_of_business",
+    origin_col="incurred_month", valuation_col="paid_month", amount_col="paid",
+    on_insufficient="skip",   # "raise", "skip", or "aggregate"
+)
 ```
 
-Segments too thin to fit are handled by `on_insufficient`: `"raise"` (default,
-names the segment), `"skip"`, or `"aggregate"` (use the pooled whole-data
-pattern). The `warn` flag and the standard `warnings` filters control reporting --
-`on_insufficient="skip", warn=False` ignores thin segments silently. Segmenting
-trades credibility for responsiveness, so very thin segments are often better
-served by the aggregate pattern or by blending toward it.
+Supporting helpers: `lag_months(incurred, valuation)`, `ibnr(completed, paid)`, and
+`validate_completion_factors(...)` (which checks a factor column is monotone and in
+range and warns on `InsufficientDataWarning`).
 
-## Functional API
+## Credibility
 
-The `Experience` object is the recommended workflow interface, but the underlying functions are also available directly:
+Greatest-accuracy credibility, either fit empirically from per-risk observations or
+constructed from known structural parameters.
 
 ```python
-from actuarialpy.experience import summarize_experience
-from actuarialpy.trend import trend_summary
-from actuarialpy.components import component_driver_analysis
-from actuarialpy.expected import summarize_actual_vs_expected
-from actuarialpy.claimants import summarize_claimants, top_claimants, claim_concentration
+from actuarialpy import Buhlmann, BuhlmannStraub, credibility_weighted_estimate
+
+# Bühlmann: rows are risks, columns are observed periods
+data = [[10, 12, 9, 11], [20, 18, 22, 19], [5, 6, 4, 7]]
+model = Buhlmann.fit(data)
+print(model.z, model.k)               # credibility factor and credibility constant
+print(model.premium(risk_mean=11.0))  # credibility-weighted premium for a risk
+
+# Bühlmann-Straub: unequal exposures via weights
+ws = BuhlmannStraub.fit(data, weights=[[1, 1, 1, 1], [2, 2, 2, 2], [1, 1, 1, 1]])
+print(ws.z(weight=6), ws.premium(risk_mean=11.0, weight=6))
+
+# or blend any observed estimate with a complement directly
+est = credibility_weighted_estimate(observed=0.82, complement=0.75, z=0.6)
 ```
 
-## Development status
+You can also construct the models directly from parameters —
+`Buhlmann(overall_mean, epv, vhm, n_obs)` and
+`BuhlmannStraub(overall_mean, epv, vhm, weights)` — when EPV and VHM are already
+known.
 
-ActuarialPy is in early development. The current focus is on reliable experience-analysis workflows before expanding into more complex forecasting, seasonality, credibility, or reserving methods.
+## Trend and forecasting
+
+```python
+from actuarialpy import trend_factor, annualized_trend, project_forward, trend_summary
+
+trend_factor(0.06, months=18)            # (1 + 0.06) ** (18/12)
+project_forward(1000.0, 0.06, months=18) # trend a value forward 18 months
+annualized_trend(current=1.1, prior=1.0, months_between=12)
+
+# trend a metric between two windows of a transactional frame
+summary = trend_summary(
+    claims, date_col="incurred_month",
+    prior_start="2025-01-01", prior_end="2025-12-31",
+    current_start="2026-01-01", current_end="2026-12-31",
+    amount_col="paid", exposure_col="member_months", groupby="product_code",
+)
+```
+
+Rate-based forecasting lives in the forecast module: `forecast_experience(...)`
+applies a trended per-exposure rate to projected exposure, with
+`forecast_from_rate(...)`, `expected_from_rate(...)`, and
+`compare_actual_to_expected(...)` as supporting helpers.
+
+## Ratios and per-exposure metrics
+
+All of these accept scalars, NumPy arrays, or pandas Series, and divide safely
+(returning NaN rather than raising on a zero denominator):
+
+| Function | Definition |
+| --- | --- |
+| `loss_ratio(losses, revenue)` | losses ÷ revenue |
+| `medical_loss_ratio(claims, premium)` | claims ÷ premium |
+| `expense_ratio(expenses, revenue)` | expenses ÷ revenue |
+| `combined_ratio(losses, expenses, revenue)` | (losses + expenses) ÷ revenue |
+| `pure_premium(losses, exposure)` | losses ÷ exposure |
+| `frequency(claim_count, exposure)` | claims ÷ exposure |
+| `severity(losses, claim_count)` | losses ÷ claim count |
+| `pmpm` / `pspm` / `pepm(amount, months)` | per-member / -subscriber / -employee per month |
+| `per_exposure(amount, exposure)` | generic per-exposure rate |
+| `permissible_loss_ratio(expense_ratio, profit_provision)` | 1 − expense ratio − profit |
+| `required_revenue(expense, target_ratio)` | expense ÷ target ratio |
+| `indicated_change(required, current)` | required ÷ current − 1 |
+| `actual_to_expected(actual, expected)` | actual ÷ expected |
+
+## Lifecycle, pooling, banding, and margins
+
+- **Lifecycle** (`lifecycle`): `is_in_force(...)`, `earned_exposure(...)`,
+  `add_months_in_force(...)`, `add_tenure(...)`, and `derive_status(...)` (which
+  labels rows `STATUS_ACTIVE` / `STATUS_FIRST_YEAR` / `STATUS_TERMED`).
+- **Pooling** (`pooling`): `pool_losses(df, loss_col, pooling_point)` splits each
+  loss into pooled and excess amounts; `excess_over_threshold(...)` isolates the
+  excess layer.
+- **Banding** (`banding`): `assign_band(df, value_col, bands)` and
+  `summarize_by_band(...)` for size-band experience.
+- **Margins** (`margins`): `add_margin(...)` / `margin(...)` / `margin_ratio(...)`.
+- **Contribution** (`contribution`): `share_of_total(...)`,
+  `contribution_to_change(...)`, and `top_contributors(...)`.
+
+## Reporting
+
+Write a set of named analysis views to a multi-sheet Excel workbook:
+
+```python
+from actuarialpy.reporting import to_excel_report
+
+views = exp.views({"overall": None, "by_group": "group_id"})
+to_excel_report(views, "experience_report.xlsx")
+```
+
+## The ActuarialPy ecosystem
+
+ActuarialPy is the deterministic, experience-and-data layer of a small family of
+actuarial packages. It is standalone (only `numpy` and `pandas`) and focuses on
+turning real data into summaries, triangles, trends, and credibility-weighted
+estimates. Three companion packages cover the distributional and simulation side
+and interoperate through a simple `.sample()` / `.mean()` interface:
+
+- **`lossmodels`** — frequency and severity distributions, aggregate
+  (collective-risk) loss models, coverage modifications, and model fitting.
+- **`risksim`** — portfolio loss simulation and aggregate reinsurance program
+  evaluation.
+- **`extremeloss`** — extreme value theory: tail fitting (peaks-over-threshold /
+  GPD, block maxima / GEV), tail risk measures, and threshold diagnostics.
+
+## Testing
+
+```bash
+pytest -q
+```
+
+## License
+
+MIT License
