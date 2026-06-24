@@ -94,7 +94,7 @@ Define the roles of your dataset once:
 import actuarialpy as ap
 
 exp = ap.Experience(
-    claims,                      # a pandas DataFrame
+    experience_data,             # a pandas DataFrame of claims, premium, and exposure
     expense="total_claims",      # the loss / claim amount column(s)
     revenue="premium",           # the premium / revenue column(s)
     exposure="member_months",    # the exposure column(s)
@@ -154,7 +154,7 @@ off ultimates and IBNR. Origin and development (lag) periods are derived for you
 from actuarialpy import make_completion_triangle, ChainLadder, completion_factors
 
 triangle = make_completion_triangle(
-    claims,
+    experience_data,
     origin_col="incurred_month",
     valuation_col="paid_month",
     amount_col="paid",
@@ -176,7 +176,7 @@ factors = completion_factors(triangle, method="volume", tail=1.0)
 from actuarialpy import chain_ladder_by, completion_factors_by
 
 per_segment = chain_ladder_by(
-    claims, groupby="line_of_business",
+    experience_data, groupby="line_of_business",
     origin_col="incurred_month", valuation_col="paid_month", amount_col="paid",
     on_insufficient="skip",   # "raise", "skip", or "aggregate"
 )
@@ -195,13 +195,13 @@ constructed from known structural parameters.
 from actuarialpy import Buhlmann, BuhlmannStraub, credibility_weighted_estimate
 
 # Bühlmann: rows are risks, columns are observed periods
-data = [[10, 12, 9, 11], [20, 18, 22, 19], [5, 6, 4, 7]]
-model = Buhlmann.fit(data)
+observations = [[10, 12, 9, 11], [20, 18, 22, 19], [5, 6, 4, 7]]
+model = Buhlmann.fit(observations)
 print(model.z, model.k)               # credibility factor and credibility constant
 print(model.premium(risk_mean=11.0))  # credibility-weighted premium for a risk
 
 # Bühlmann-Straub: unequal exposures via weights
-ws = BuhlmannStraub.fit(data, weights=[[1, 1, 1, 1], [2, 2, 2, 2], [1, 1, 1, 1]])
+ws = BuhlmannStraub.fit(observations, weights=[[1, 1, 1, 1], [2, 2, 2, 2], [1, 1, 1, 1]])
 print(ws.z(weight=6), ws.premium(risk_mean=11.0, weight=6))
 
 # or blend any observed estimate with a complement directly
@@ -224,7 +224,7 @@ annualized_trend(current=1.1, prior=1.0, months_between=12)
 
 # trend a metric between two windows of a transactional frame
 summary = trend_summary(
-    claims, date_col="incurred_month",
+    experience_data, date_col="incurred_month",
     prior_start="2025-01-01", prior_end="2025-12-31",
     current_start="2026-01-01", current_end="2026-12-31",
     amount_col="paid", exposure_col="member_months", groupby="product_code",
