@@ -177,9 +177,9 @@ def test_completion_factors_by_tidy():
     from actuarialpy.reserving import completion_factors_by
 
     tidy = completion_factors_by(_dev_two_lobs(), groupby="lob", **_BYARGS)
-    assert list(tidy.columns) == ["lob", "lag_month", "completion_factor"]
+    assert list(tidy.columns) == ["lob", "development_month", "completion_factor"]
     assert len(tidy) == 6  # 2 LOBs x 3 lags
-    a0 = tidy[(tidy["lob"] == "A") & (tidy["lag_month"] == 0)]["completion_factor"].iloc[0]
+    a0 = tidy[(tidy["lob"] == "A") & (tidy["development_month"] == 0)]["completion_factor"].iloc[0]
     assert a0 == pytest.approx(0.648, abs=1e-3)
 
 
@@ -189,7 +189,7 @@ def test_completion_factors_by_multi_column():
     df = _dev_two_lobs()
     df["plan"] = "P1"
     tidy = completion_factors_by(df, groupby=["lob", "plan"], **_BYARGS)
-    assert list(tidy.columns) == ["lob", "plan", "lag_month", "completion_factor"]
+    assert list(tidy.columns) == ["lob", "plan", "development_month", "completion_factor"]
     assert set(tidy["lob"]) == {"A", "B"}
 
 

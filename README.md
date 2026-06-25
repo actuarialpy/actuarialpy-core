@@ -40,6 +40,9 @@ export.
   and direct credibility-weighting of any estimate.
 - **Trend and forecasting** — annualized trend, midpoint trend factors, projecting
   values forward, period-over-period comparisons, and rate-based forecasts.
+- **Seasonality and working days** — per-month working-day counts (holidays included)
+  and classical seasonal factors (overall or per segment) to deseasonalize history or
+  project a pattern forward.
 - **Lifecycle and exposure** — in-force determination, earned exposure, tenure,
   and active / first-year / termed status.
 - **Pooling, banding, and margins** — pooling points and excess losses, size
@@ -70,6 +73,7 @@ actuarialpy/
 ├── trend.py         # trend factors, projections, period-over-period comparisons
 ├── forecast.py      # rate-based forecasting and actual-vs-forecast
 ├── components.py    # component / driver decompositions
+├── decomposition.py # frequency-severity & PMPM trend decomposition
 ├── contribution.py  # share-of-total and contribution-to-change
 ├── expected.py      # actual-versus-expected summaries
 ├── claimants.py     # large-claimant flags and concentration
@@ -79,8 +83,9 @@ actuarialpy/
 ├── banding.py       # size banding and banded summaries
 ├── margins.py       # underwriting margins
 ├── metrics.py       # ratios and per-exposure metrics
-├── credibility.py   # Bühlmann / Bühlmann-Straub credibility
+├── credibility.py   # Bühlmann, Bühlmann-Straub & limited-fluctuation credibility
 ├── reserving.py     # triangles, chain ladder, completion factors, IBNR
+├── seasonality.py   # working-day counts and seasonal factors
 ├── periods.py       # period / duration column helpers
 ├── profiles.py      # naming profiles (e.g. health vs. P&C terminology)
 └── reporting.py     # multi-sheet workbook export
@@ -143,12 +148,13 @@ views = exp.views({"overall": None, "by_group": "group_id", "by_product": "produ
 | `with_status(...)` / `by_status(...)` | lifecycle status assignment and summary |
 | `margin(...)` | underwriting margins |
 | `credibility_weighted(groupby, z, metric)` | credibility-blended estimates by group |
+| `deseasonalize(factors)` / `complete(factors, valuation_date)` | new Experience with seasonality removed / claims developed to ultimate |
 | `filter(...)` / `with_roles(...)` | derive a new Experience |
 
 ## Reserving
 
 Build a development triangle from transactional data, fit a chain ladder, and read
-off ultimates and IBNR. Origin and development (lag) periods are derived for you.
+off ultimates and IBNR. Origin and development periods are derived for you.
 
 ```python
 from actuarialpy import make_completion_triangle, ChainLadder, completion_factors
@@ -163,28 +169,84 @@ triangle = make_completion_triangle(
 
 cl = ChainLadder.fit(triangle, method="volume", tail=1.0)
 projection = cl.project(triangle)
-# projection columns: latest_lag, latest, development_factor, ultimate, ibnr
+# projection columns: latest_development, latest, development_factor, ultimate, ibnr
 
 # or just the completion factors (1 / cumulative development factor)
 factors = completion_factors(triangle, method="volume", tail=1.0)
 ```
 
 `ChainLadder.fit` exposes `age_to_age`, `cdf`, `completion_factors`, `tail`, and
-`method`. Segment-level reserving is available without manually splitting data:
+`method`. Segment-level reserving is available without manually splitting data —
+`chain_ladder_by` returns a `{segment: ChainLadder}` mapping, and `completion_factors_by`
+returns a **tidy table** of factors, one row per `(segment, development_month)`:
 
 ```python
 from actuarialpy import chain_ladder_by, completion_factors_by
 
-per_segment = chain_ladder_by(
+cf_by_lob = completion_factors_by(
     experience_data, groupby="line_of_business",
     origin_col="incurred_month", valuation_col="paid_month", amount_col="paid",
     on_insufficient="skip",   # "raise", "skip", or "aggregate"
 )
+# columns: line_of_business, development_month, completion_factor
 ```
 
-Supporting helpers: `lag_months(incurred, valuation)`, `ibnr(completed, paid)`, and
-`validate_completion_factors(...)` (which checks a factor column is monotone and in
-range and warns on `InsufficientDataWarning`).
+Supporting helpers: `development_months(incurred, valuation)` (still available under the
+older name `lag_months`), `ibnr(completed, paid)`, and `validate_completion_factors(...)`
+(which checks a factor column is in range and warns on `InsufficientDataWarning`).
+
+**Applying completion factors.** Estimating factors and applying them are kept separate,
+because applying hinges on a join — each row's development period matched to the right
+factor. `apply_completion` commits to one well-defined contract: factors keyed by
+development period, each row's period taken as `development_months(incurred, valuation)`
+(the same convention `make_completion_triangle` uses, so factors from the pipeline above
+join by construction), matched **by value** so the frame's index is irrelevant. Rows past
+the triangle's last development period are taken as fully complete; only recent, immature
+months move.
+
+```python
+from actuarialpy import apply_completion
+
+# latest diagonal: one row per incurred month, claims paid-to-date as of the valuation
+completed = apply_completion(
+    latest_diagonal, factors,
+    value_col="claims", date_col="incurred_month", valuation_date="2024-12-31",
+)
+# completed["claims_completed"] == paid / completion_factor; equals ChainLadder's
+# per-origin ultimate. Pass development_col=... instead if you already carry a
+# maturity column.
+```
+
+**Per-segment factors (grouped join).** When the pattern differs by segment, pass the
+tidy table from `completion_factors_by` together with `by=` naming the grouping
+column(s). Each row is joined on its group **and** development period: a row past *its own
+group's* last development period is complete, an absent `(group, period)` stays `NaN` (a
+surfaced gap, never silently filled), and a duplicated `(group, period)` in the factor
+table is rejected rather than allowed to fan out the data.
+
+```python
+completed = apply_completion(
+    latest_diagonal, cf_by_lob, by="line_of_business",
+    value_col="claims", date_col="incurred_month", valuation_date="2024-12-31",
+)
+# each segment is developed by its own pattern, reproducing that segment's own chain ladder
+```
+
+On the `Experience` facade, `complete` grosses the expense column up to ultimate in
+place under the same name, so every downstream view runs on completed claims — the
+reserving counterpart to `deseasonalize`. It takes the same `by=` for per-segment factors:
+
+```python
+clean = exp.complete(factors, valuation_date="2024-12-31")
+clean.rolling(12)        # runs on completed claims; only the green months changed
+
+# or per line of business, each developed by its own completion pattern:
+clean = exp.complete(cf_by_lob, valuation_date="2024-12-31", by="line_of_business")
+```
+
+Run completion **before** deseasonalizing and trending — `complete → deseasonalize →
+trend` — since deseasonalizing paid claims would tangle claims runout with the calendar
+effect. Only the numerator is developed; exposure is left untouched.
 
 ## Credibility
 
@@ -213,6 +275,23 @@ You can also construct the models directly from parameters —
 `BuhlmannStraub(overall_mean, epv, vhm, weights)` — when EPV and VHM are already
 known.
 
+For the limited-fluctuation (classical) credibility most group experience rating
+uses — the square-root rule against a full-credibility standard, often a filed value
+— use `limited_fluctuation_z`:
+
+```python
+from actuarialpy import limited_fluctuation_z, full_credibility_claims, credibility_weighted_estimate
+
+# Z = min(1, sqrt(exposure / full_credibility_standard)); exposure is claim counts,
+# member months, life-years, etc. Works per group on a Series.
+groups["z"] = limited_fluctuation_z(groups["claim_count"], full_credibility_standard=1082)
+groups["blended_lr"] = credibility_weighted_estimate(groups["experience_lr"], manual_lr, groups["z"])
+
+# derive a standard from first principles instead of using a filed one:
+n_full = full_credibility_claims(confidence=0.90, tolerance=0.05)            # ~1082 claims
+n_full_agg = full_credibility_claims(confidence=0.90, tolerance=0.05, severity_cv=2.0)  # inflated for severity
+```
+
 ## Trend and forecasting
 
 ```python
@@ -236,6 +315,44 @@ applies a trended per-exposure rate to projected exposure, with
 `forecast_from_rate(...)`, `expected_from_rate(...)`, and
 `compare_actual_to_expected(...)` as supporting helpers.
 
+## Actual versus forecast
+
+To compare actuals against a forecast, supply the two as separate tables — for
+example a database pull for paids and a finance workbook for the forecast — and
+align them with `compare_actual_to_expected`:
+
+```python
+from actuarialpy.forecast import compare_actual_to_expected
+
+variance = compare_actual_to_expected(
+    actuals_table,
+    forecast_table,
+    on=["month", "segment", "product", "category"],
+    actual_col="amount",                 # value column in the actuals table
+    expected_col="amount",               # value column in the forecast table
+    how="outer",                         # keep forecast months without actuals yet
+    suffixes=("actual", "forecast"),     # -> amount_actual, amount_forecast
+)
+# columns: <keys...>, amount_actual, amount_forecast,
+#          variance, variance_pct, actual_to_expected
+```
+
+The two frames are joined on `on` and the variance, variance percent, and
+actual-to-expected ratio are computed. When both tables call their value column `amount`, a
+plain merge would collide them into `amount_x` / `amount_y`; instead the output
+disambiguates them as `amount_actual` / `amount_forecast` (controlled by `suffixes`,
+default `("actual", "expected")`). When the two value columns already have distinct
+names, they are left unchanged. With `how="outer"`, a key present in only one table —
+such as a future month that has a forecast but no actual yet — is kept, with the
+missing side left as `NaN`, so unavailable actuals stay distinguishable from a true
+zero.
+
+**Units caveat:** when `category` mixes units (dollars for expenses/revenue, counts
+for member months), a grand total over all categories adds unlike quantities and is
+not meaningful — keep `category` in the keys, or filter to a single category. For
+coarser time buckets (quarter, year), derive a period column first with
+`actuarialpy.periods.add_period_column(df, date_col, freq)`.
+
 ## Ratios and per-exposure metrics
 
 All of these accept scalars, NumPy arrays, or pandas Series, and divide safely
@@ -256,6 +373,160 @@ All of these accept scalars, NumPy arrays, or pandas Series, and divide safely
 | `required_revenue(expense, target_ratio)` | expense ÷ target ratio |
 | `indicated_change(required, current)` | required ÷ current − 1 |
 | `actual_to_expected(actual, expected)` | actual ÷ expected |
+
+## Utilization and PMPM trend decomposition
+
+Split a per-member cost into its drivers and decompose movement between two periods
+into utilization versus unit cost — the standard "how much of the trend is util vs
+cost" exhibit. It needs a claim (or service) count alongside losses and exposure.
+
+```python
+from actuarialpy import frequency_severity_summary, decompose_pmpm_trend
+
+# per-group panel; pmpm == frequency * severity holds for every row
+panel = frequency_severity_summary(
+    df, count_col="claim_count", loss_col="claims", exposure_col="member_months",
+    groupby="plan",
+)
+# columns: plan, member_months, claim_count, claims, frequency, severity, util_per_1000, pmpm
+
+# decompose the change between two period slices
+trend = decompose_pmpm_trend(
+    prior_year, current_year,
+    count_col="claim_count", loss_col="claims", exposure_col="member_months",
+    on="plan",        # optional; omit for a single total row
+)
+# pmpm_trend == util_trend * cost_trend (exact), and
+# pmpm_change == util_effect + cost_effect (exact, symmetric dollar split)
+```
+
+The multiplicative view answers "PMPM grew X%, of which U% utilization and C% unit
+cost"; the additive `util_effect` / `cost_effect` give the same split in dollars and
+sum exactly to the PMPM change. `util_per_1000` is annualized claims per 1,000
+members (pass `annualization=1` if exposure is already in member-years).
+
+## Seasonality and working-day adjustment
+
+Two months of claims are rarely comparable as-is. They differ for reasons that have
+nothing to do with real changes in your book: a month may have fewer working days
+(weekends and holidays close offices), and the time of year matters on its own (flu
+season runs hot, summer light). These are separate effects, so there are two tools.
+
+**Working days.** `business_days_in_period` counts weekdays minus holidays in each
+period (US federal holidays via pandas, by default — no extra dependency). Dividing a
+paid amount by this makes a short month and a long month comparable.
+
+```python
+from actuarialpy import business_days_in_period
+
+business_days_in_period(pd.date_range("2024-01-01", "2024-12-01", freq="MS"))
+# 2024-01-01    21
+# 2024-02-01    20
+# ...
+# 2024-06-01    19   # fewer working days -> looks lighter on its own
+# 2024-11-01    19
+# 2024-12-01    21
+```
+
+`add_business_days(df, date_col)` adds the count as a column; divide your paid column
+by it to get an amount-per-working-day series. `holidays` accepts `"us_federal"`,
+`None` (weekdays only), or your own list of dates; `weekmask` sets which weekdays count.
+
+**Seasonal factors.** `seasonality_factors` learns one multiplier per calendar period
+from a few years of history — the classical ratio-to-moving-average decomposition,
+normalized to average 1.0. Pass `exposure_col` to compute the factors on a rate (PMPM),
+which is the right basis for health: it removes membership growth, so only the
+time-of-year pattern remains.
+
+```python
+from actuarialpy import seasonality_factors, deseasonalize, apply_seasonality
+
+factors = seasonality_factors(
+    exp, date_col="month", value_col="claims", exposure_col="member_months",
+)
+# season
+# 1     1.180   # January ~18% hot
+# 6     0.886   # June ~11% light
+# 12    1.131
+```
+
+`deseasonalize` divides the pattern out so you can see the underlying trend;
+`apply_seasonality` multiplies it back when projecting a flat annual number onto
+specific months. December's raw claims below look alarming, but deseasonalized they
+sit right on trend — the jump was just the winter factor.
+
+```python
+deseasonalize(recent, factors, date_col="month", value_col="claims")
+#      month     claims  member_months  claims_deseasonalized
+# 2024-09-01  6,648,743         13,691              6,975,622
+# 2024-10-01  7,040,449         13,732              7,024,422
+# 2024-11-01  7,298,236         13,773              7,072,117
+# 2024-12-01  8,049,170         13,814              7,118,962   # not real growth
+```
+
+Seasonal factors are the workhorse and stand on their own — they already absorb each
+month's *typical* working-day count. Working-day normalization is an optional
+refinement for the residual year-to-year wrinkle (an unusually holiday-heavy month).
+When you use both, normalize by working days first, then fit factors on the normalized
+series. Other knobs: `freq="Q"` for quarterly factors, `method="period_share"` for the
+simpler share-of-year-average estimate, `aggregate="median"` to blunt outlier months,
+and `exclude=[2020, 2021]` to keep distorted years out of the estimate.
+
+**On the `Experience` object.** `Experience.deseasonalize(factors)` applies the pattern
+once and returns a new `Experience` with the expense column adjusted under the same
+name, so every downstream view composes on the deseasonalized series — no per-view flag
+needed. Estimate the factors on the broader pool, then apply them to the group:
+
+```python
+factors = seasonality_factors(pool, date_col="month", value_col="claims",
+                              exposure_col="member_months")   # estimated on the block, once
+clean = exp.deseasonalize(factors)   # new Experience; claims divided by its factor, same column
+clean.rolling(12)                    # every view now runs on the deseasonalized series
+clean.trend(date_col="month", prior_start="2023-01-01", prior_end="2023-12-01",
+            current_start="2024-01-01", current_end="2024-12-01")
+```
+
+Only the numerator is adjusted (exposure is left alone), so a deseasonalized PMPM is
+just deseasonalized claims over unchanged member months. A rolling-12 or any like-for-
+like full-year comparison already cancels seasonality on its own, so reach for this
+mainly when fitting trend on month-level data or annualizing a partial period.
+
+**Per-segment factors (grouped join).** Seasonality often differs by segment, and the
+granularity varies — sometimes line of business, sometimes line × product.
+`seasonality_factors_by` fits the pattern within each segment and returns a tidy table,
+one row per `(segment, season)`:
+
+```python
+from actuarialpy import seasonality_factors_by
+
+sf_by_lob = seasonality_factors_by(
+    pool, groupby="line_of_business",
+    date_col="month", value_col="claims", exposure_col="member_months",
+)
+# columns: line_of_business, season, seasonal_factor
+```
+
+Pass that table to `deseasonalize`, `apply_seasonality`, or `Experience.deseasonalize`
+with `by=` naming the grouping column(s). The join carries the same guarantees as the
+reserving side: matched by value (index irrelevant), an absent `(group, season)` left as
+`NaN`, and a duplicated key rejected rather than fanned out.
+
+```python
+clean = exp.deseasonalize(sf_by_lob, by="line_of_business")
+# or at a finer grain, factors keyed by line of business AND product:
+clean = exp.deseasonalize(sf_by_lob_product, by=["line_of_business", "product"])
+```
+
+Because completion and seasonality each adjust the expense column in place, they compose
+even when keyed at *different* groupings — complete by line of business, then
+deseasonalize by line × product:
+
+```python
+clean = (
+    exp.complete(cf_by_lob, valuation_date="2024-12-31", by="line_of_business")
+       .deseasonalize(sf_by_lob_product, by=["line_of_business", "product"])
+)
+```
 
 ## Lifecycle, pooling, banding, and margins
 

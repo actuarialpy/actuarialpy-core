@@ -6,7 +6,7 @@ from collections.abc import Iterable
 
 import pandas as pd
 
-from actuarialpy.columns import as_list, sum_columns, validate_columns
+from actuarialpy.columns import as_list, is_date_like, sum_columns, validate_columns
 from actuarialpy.metrics import loss_ratio, per_exposure
 from actuarialpy.profiles import apply_profile_labels, get_profile_defaults
 
@@ -30,6 +30,49 @@ def _per_exposure_column_names(total_expense_name: str, total_revenue_name: str,
         "employee_months": ("expense_pepm", "revenue_pepm"),
     }
     return mapping.get(exposure, (f"{total_expense_name}_per_{exposure}", f"{total_revenue_name}_per_{exposure}"))
+
+
+def _order_summary_columns(
+    summary: pd.DataFrame,
+    *,
+    groups: list[str],
+    expenses: list[str],
+    revenues: list[str],
+    exposures: list[str],
+    total_expense_name: str,
+    total_revenue_name: str,
+    ratio_col: str,
+    expense_per_names: list[str],
+    revenue_per_names: list[str],
+) -> pd.DataFrame:
+    """Reorder summary columns into a consistent, readable layout.
+
+    Order: date-like grouping columns, then other grouping columns, then exposure
+    (volume), then the full expense block (components, total, then per-exposure rates),
+    then the full revenue block, and finally the ratio. This keeps each total next to
+    its own per-exposure rate (e.g. total expense beside expense PMPM) and is identical
+    across every view. Any unexpected columns are appended rather than dropped.
+    """
+    date_groups = [g for g in groups if is_date_like(summary[g], g)]
+    other_groups = [g for g in groups if g not in date_groups]
+    expense_block = list(expenses) + [total_expense_name] + list(expense_per_names)
+    revenue_block = list(revenues) + [total_revenue_name] + list(revenue_per_names)
+    preferred = (
+        date_groups + other_groups + list(exposures)
+        + expense_block + revenue_block + [ratio_col]
+    )
+
+    seen: set[str] = set()
+    ordered: list[str] = []
+    for col in preferred:
+        if col in summary.columns and col not in seen:
+            seen.add(col)
+            ordered.append(col)
+    for col in summary.columns:  # preserve anything not explicitly ordered
+        if col not in seen:
+            seen.add(col)
+            ordered.append(col)
+    return summary[ordered]
 
 
 def summarize_experience(
@@ -80,11 +123,27 @@ def summarize_experience(
     summary[total_revenue_name] = sum_columns(summary, revenues)
     summary[ratio_col] = loss_ratio(summary[total_expense_name], summary[total_revenue_name])
 
+    expense_per_names: list[str] = []
+    revenue_per_names: list[str] = []
     for exposure in exposures:
         expense_per, revenue_per = _per_exposure_column_names(total_expense_name, total_revenue_name, exposure)
         summary[expense_per] = per_exposure(summary[total_expense_name], summary[exposure])
         summary[revenue_per] = per_exposure(summary[total_revenue_name], summary[exposure])
+        expense_per_names.append(expense_per)
+        revenue_per_names.append(revenue_per)
 
+    summary = _order_summary_columns(
+        summary,
+        groups=groups,
+        expenses=expenses,
+        revenues=revenues,
+        exposures=exposures,
+        total_expense_name=total_expense_name,
+        total_revenue_name=total_revenue_name,
+        ratio_col=ratio_col,
+        expense_per_names=expense_per_names,
+        revenue_per_names=revenue_per_names,
+    )
     return apply_profile_labels(summary, profile=profile, labels=labels)
 
 

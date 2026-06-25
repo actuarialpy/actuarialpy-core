@@ -6,7 +6,7 @@ from collections.abc import Iterable
 
 import pandas as pd
 
-from actuarialpy.columns import as_list, sum_columns, validate_columns
+from actuarialpy.columns import as_list, is_date_like, sum_columns, validate_columns
 from actuarialpy.metrics import actual_to_expected as actual_to_expected_ratio, per_exposure, safe_divide
 
 
@@ -18,6 +18,55 @@ def _per_exposure_name(prefix: str, exposure_col: str) -> str:
     if exposure_col == "employee_months":
         return f"{prefix}_pepm"
     return f"{prefix}_per_{exposure_col}"
+
+
+def _order_ave_columns(
+    out: pd.DataFrame,
+    *,
+    groups: list[str],
+    actuals: list[str],
+    expecteds: list[str],
+    exposures: list[str],
+    actual_name: str,
+    expected_name: str,
+    ae_name: str,
+    variance_name: str,
+    variance_pct_name: str,
+) -> pd.DataFrame:
+    """Reorder actual-vs-expected summary columns into a consistent, readable layout.
+
+    Order: date-like grouping columns, then other grouping columns, then exposure
+    (volume), then the actual block (components, total, per-exposure rate), then the
+    expected block, then the comparison metrics on the right -- variance and its
+    per-exposure rate(s), variance percent, and finally the actual-to-expected ratio.
+    Each total stays next to its own per-exposure rate, and the derived comparison
+    metrics (variance, variance percent, ratio) are grouped together at the right.
+    Unexpected columns are appended rather than dropped.
+    """
+    date_groups = [g for g in groups if is_date_like(out[g], g)]
+    other_groups = [g for g in groups if g not in date_groups]
+    actual_rates = [_per_exposure_name(actual_name, e) for e in exposures]
+    expected_rates = [_per_exposure_name(expected_name, e) for e in exposures]
+    variance_rates = [_per_exposure_name(variance_name, e) for e in exposures]
+    actual_block = list(actuals) + [actual_name] + actual_rates
+    expected_block = list(expecteds) + [expected_name] + expected_rates
+    variance_block = [variance_name] + variance_rates + [variance_pct_name]
+    preferred = (
+        date_groups + other_groups + list(exposures)
+        + actual_block + expected_block + variance_block + [ae_name]
+    )
+
+    seen: set[str] = set()
+    ordered: list[str] = []
+    for col in preferred:
+        if col in out.columns and col not in seen:
+            seen.add(col)
+            ordered.append(col)
+    for col in out.columns:  # preserve anything not explicitly ordered
+        if col not in seen:
+            seen.add(col)
+            ordered.append(col)
+    return out[ordered]
 
 
 def summarize_actual_vs_expected(
@@ -62,4 +111,15 @@ def summarize_actual_vs_expected(
         out[_per_exposure_name(expected_name, exposure)] = per_exposure(out[expected_name], out[exposure])
         out[_per_exposure_name(variance_name, exposure)] = per_exposure(out[variance_name], out[exposure])
 
-    return out
+    return _order_ave_columns(
+        out,
+        groups=groups,
+        actuals=actuals,
+        expecteds=expecteds,
+        exposures=exposures,
+        actual_name=actual_name,
+        expected_name=expected_name,
+        ae_name=ae_name,
+        variance_name=variance_name,
+        variance_pct_name=variance_pct_name,
+    )

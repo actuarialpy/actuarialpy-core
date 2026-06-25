@@ -19,13 +19,16 @@ from actuarialpy.metrics import (
     required_revenue,
     safe_divide,
     severity,
+    utilization_per_1000,
 )
 from actuarialpy.reserving import (
     ChainLadder,
     InsufficientDataWarning,
+    apply_completion,
     chain_ladder_by,
     completion_factors,
     completion_factors_by,
+    development_months,
     ibnr,
     lag_months,
     make_completion_triangle,
@@ -35,6 +38,8 @@ from actuarialpy.credibility import (
     Buhlmann,
     BuhlmannStraub,
     credibility_weighted_estimate,
+    full_credibility_claims,
+    limited_fluctuation_z,
 )
 from actuarialpy.lifecycle import (
     STATUS_ACTIVE,
@@ -63,6 +68,15 @@ from actuarialpy.trend import (
 )
 from actuarialpy.components import component_driver_analysis, component_trend, summarize_components
 from actuarialpy.cohorts import cohort_summary, cohort_summary_by_period, duration_summary
+from actuarialpy.decomposition import decompose_pmpm_trend, frequency_severity_summary
+from actuarialpy.seasonality import (
+    add_business_days,
+    apply_seasonality,
+    business_days_in_period,
+    deseasonalize,
+    seasonality_factors,
+    seasonality_factors_by,
+)
 
 __all__ = [
     "Experience",
@@ -79,6 +93,7 @@ __all__ = [
     "pmpm",
     "pspm",
     "pure_premium",
+    "utilization_per_1000",
     "ratio",
     "required_revenue",
     "safe_divide",
@@ -88,8 +103,10 @@ __all__ = [
     "chain_ladder_by",
     "completion_factors",
     "completion_factors_by",
+    "apply_completion",
     "ibnr",
     "lag_months",
+    "development_months",
     "make_completion_triangle",
     "validate_completion_factors",
     "status_summary",
@@ -102,6 +119,8 @@ __all__ = [
     "claim_concentration",
     "cohort_summary",
     "cohort_summary_by_period",
+    "frequency_severity_summary",
+    "decompose_pmpm_trend",
     "duration_summary",
     "rolling_summary",
     "annualized_trend",
@@ -117,6 +136,8 @@ __all__ = [
     "Buhlmann",
     "BuhlmannStraub",
     "credibility_weighted_estimate",
+    "limited_fluctuation_z",
+    "full_credibility_claims",
     # lifecycle
     "STATUS_ACTIVE",
     "STATUS_FIRST_YEAR",
@@ -136,6 +157,13 @@ __all__ = [
     # large-loss pooling
     "excess_over_threshold",
     "pool_losses",
+    # seasonality and working-day adjustment
+    "business_days_in_period",
+    "add_business_days",
+    "seasonality_factors",
+    "seasonality_factors_by",
+    "deseasonalize",
+    "apply_seasonality",
 ]
 
-__version__ = "0.12.0"
+__version__ = "0.22.0"

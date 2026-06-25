@@ -20,7 +20,9 @@ from actuarialpy.experience import status_summary, summarize_experience, summari
 from actuarialpy.lifecycle import derive_status
 from actuarialpy.metrics import per_exposure, safe_divide
 from actuarialpy.pooling import pool_losses
+from actuarialpy.reserving import apply_completion as _apply_completion
 from actuarialpy.rolling import rolling_summary
+from actuarialpy.seasonality import deseasonalize as _deseasonalize
 from actuarialpy.trend import trend_summary
 
 _ID_LIKE_EXPOSURE_NAMES = {"member_id", "subscriber_id", "group_id", "employee_id", "policy_id", "claim_id"}
@@ -118,6 +120,97 @@ class Experience:
             data = cast("pd.DataFrame", self.data.loc[mask])
         if copy:
             data = data.copy()
+        return self.with_roles(data=data, copy=False)
+
+    def deseasonalize(
+        self,
+        factors: pd.Series,
+        *,
+        columns: str | list[str] | None = None,
+        freq: str = "M",
+        by: str | list[str] | None = None,
+        date_col: str | None = None,
+    ) -> "Experience":
+        """Return a new ``Experience`` with the seasonal pattern divided out.
+
+        Each selected column is divided by its row's seasonal factor (as produced by
+        :func:`seasonality_factors`), in place under the same name, so every
+        downstream view -- :meth:`trend`, :meth:`rolling`, :meth:`by`, and the rest --
+        then operates on the deseasonalized series. By default the expense
+        (loss / claims) columns are adjusted; pass ``columns`` to choose others. Only
+        the numerator is touched: exposure is left alone, so a deseasonalized PMPM is
+        simply deseasonalized claims over unchanged member months.
+
+        ``factors`` may be a flat Series (one pattern) or a tidy per-segment table from
+        :func:`seasonality_factors_by`; with the latter, pass ``by`` naming the grouping
+        column(s) to join on group plus season. Estimate factors on the broader pool,
+        not on this object's own (often thin) data. To put the pattern back, apply
+        :func:`apply_seasonality` to ``.data``.
+        """
+        resolved_date = self._resolve_date_col(date_col)
+        cols = as_list(columns) if columns is not None else as_list(self.expense)
+        if not cols:
+            raise ValueError("No columns to deseasonalize; pass columns=... or bind an expense role.")
+        validate_columns(self.data, cols + [resolved_date] + as_list(by))
+        data = self.data.copy()
+        for col in cols:
+            data = _deseasonalize(
+                data, factors, date_col=resolved_date, value_col=col, freq=freq, by=by, out_col=col, copy=False
+            )
+        return self.with_roles(data=data, copy=False)
+
+    def complete(
+        self,
+        factors: pd.Series,
+        *,
+        valuation_date: Any = None,
+        columns: str | list[str] | None = None,
+        development_col: str | None = None,
+        by: str | list[str] | None = None,
+        date_col: str | None = None,
+    ) -> "Experience":
+        """Return a new ``Experience`` with paid amounts developed to ultimate.
+
+        Grosses the expense (loss / claims) columns up to estimated ultimate in place
+        under the same names -- ``completed = paid / completion_factor`` -- so downstream
+        views (:meth:`trend`, :meth:`rolling`, :meth:`by`, ...) then run on the completed
+        series. Each row's development period is
+        ``development_months(date, valuation_date)`` (the convention
+        :func:`make_completion_triangle` uses), or an explicit ``development_col``. The
+        join is by value, so the frame's index is irrelevant; rows past the triangle's
+        last development period are taken as fully complete, and only recent, immature
+        months actually move.
+
+        ``factors`` may be a flat Series (one pattern, from :func:`completion_factors`)
+        or a tidy per-segment table from :func:`completion_factors_by`; with the latter,
+        pass ``by`` naming the grouping column(s) to join on group plus development
+        period. Only the numerator is developed -- exposure is left untouched. This
+        applies to the latest-diagonal shape (one row per incurred month, ``claims``
+        paid-to-date as of ``valuation_date``); a frame already on an ultimate basis must
+        not be completed again.
+        """
+        cols = as_list(columns) if columns is not None else as_list(self.expense)
+        if not cols:
+            raise ValueError("No columns to complete; pass columns=... or bind an expense role.")
+        if development_col is None:
+            resolved_date = self._resolve_date_col(date_col)
+            validate_columns(self.data, cols + [resolved_date] + as_list(by))
+        else:
+            resolved_date = None
+            validate_columns(self.data, cols + [development_col] + as_list(by))
+        data = self.data.copy()
+        for col in cols:
+            data = _apply_completion(
+                data,
+                factors,
+                value_col=col,
+                date_col=resolved_date,
+                valuation_date=valuation_date,
+                development_col=development_col,
+                by=by,
+                out_col=col,
+                copy=False,
+            )
         return self.with_roles(data=data, copy=False)
 
     def by(self, groupby: str | list[str] | None = None, **kwargs: Any) -> pd.DataFrame:

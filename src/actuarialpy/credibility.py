@@ -11,6 +11,7 @@ experience and ratemaking workflows that consume it.
 
 from __future__ import annotations
 
+from statistics import NormalDist
 from typing import Any
 
 import numpy as np
@@ -308,3 +309,55 @@ class BuhlmannStraub:
             f"BuhlmannStraub(overall_mean={self.overall_mean}, "
             f"epv={self.epv}, vhm={self.vhm}, weights={self.weights})"
         )
+
+
+def limited_fluctuation_z(exposure: Any, full_credibility_standard: float) -> Any:
+    """Limited-fluctuation (classical) credibility factor -- the square-root rule.
+
+    Returns ``Z = min(1, sqrt(exposure / full_credibility_standard))``. ``exposure``
+    is the volume credibility is based on (claim counts, member months, life-years,
+    ...) and ``full_credibility_standard`` is the amount of that volume required for
+    full (``Z = 1``) credibility -- often a filed value. Scalars return a native
+    ``float``; ``pandas.Series`` inputs return a ``Series`` (index preserved); other
+    array-likes return a ``numpy.ndarray``, so credibility can be computed per group.
+    Feed the result to :func:`credibility_weighted_estimate` to blend experience with
+    its complement.
+    """
+    if full_credibility_standard <= 0:
+        raise ValueError("full_credibility_standard must be positive.")
+    if isinstance(exposure, _SCALAR_TYPES):
+        return float(min(1.0, np.sqrt(max(float(exposure), 0.0) / full_credibility_standard)))
+    ratio_arr = np.asarray(exposure, dtype=float) / full_credibility_standard
+    z_arr = np.minimum(np.sqrt(np.clip(ratio_arr, 0.0, None)), 1.0)
+    if isinstance(exposure, pd.Series):
+        return pd.Series(z_arr, index=exposure.index, name=exposure.name)
+    return z_arr
+
+
+def full_credibility_claims(
+    *, confidence: float = 0.90, tolerance: float = 0.05, severity_cv: float | None = None
+) -> float:
+    """Classical full-credibility standard, in expected number of claims.
+
+    Returns the expected claim count for full credibility under the
+    limited-fluctuation model: ``(z / k) ** 2`` for claim frequency, where ``z`` is
+    the standard-normal quantile for two-sided ``confidence`` and ``k`` is the
+    ``tolerance``. The classic 90% / 5% choice gives about 1082 claims. Supplying
+    ``severity_cv`` (the coefficient of variation of individual claim severity)
+    inflates it to ``(z / k) ** 2 * (1 + severity_cv ** 2)`` for aggregate losses
+    rather than pure frequency.
+
+    Many shops use a filed standard instead; pass that straight to
+    :func:`limited_fluctuation_z`.
+    """
+    if not 0.0 < confidence < 1.0:
+        raise ValueError("confidence must be between 0 and 1.")
+    if tolerance <= 0.0:
+        raise ValueError("tolerance must be positive.")
+    z = NormalDist().inv_cdf((1.0 + confidence) / 2.0)
+    standard = (z / tolerance) ** 2
+    if severity_cv is not None:
+        if severity_cv < 0.0:
+            raise ValueError("severity_cv must be non-negative.")
+        standard *= 1.0 + severity_cv**2
+    return standard

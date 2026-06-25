@@ -92,6 +92,17 @@ def pure_premium(losses: Any, exposure: Any) -> Any:
     return per_exposure(losses, exposure)
 
 
+def utilization_per_1000(claim_count: Any, exposure: Any, *, annualization: float = 12) -> Any:
+    """Annualized utilization per 1,000 members.
+
+    Returns ``claim_count / exposure * annualization * 1000``. With monthly member
+    months as ``exposure`` the default ``annualization=12`` yields services (admits,
+    visits, scripts, ...) per 1,000 members per year. If ``exposure`` is already in
+    member-years, pass ``annualization=1``.
+    """
+    return ratio(claim_count, exposure) * annualization * 1000
+
+
 def required_revenue(expense: Any, target_ratio: Any) -> Any:
     """Revenue needed for an expense amount to hit a target ratio."""
     return safe_divide(expense, target_ratio)

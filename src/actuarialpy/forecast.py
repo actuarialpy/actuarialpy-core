@@ -64,13 +64,50 @@ def compare_actual_to_expected(
     actual_col: str,
     expected_col: str,
     how: Literal["left", "right", "outer", "inner", "cross"] = "left",
+    suffixes: tuple[str, str] = ("actual", "expected"),
 ) -> pd.DataFrame:
-    """Join actual and expected tables and calculate A/E and variance metrics."""
+    """Join actual and expected tables and calculate A/E and variance metrics.
+
+    The two frames are merged on ``on`` and the actual-to-expected ratio, variance,
+    and variance percent are computed. Use ``how="outer"`` so that keys present on
+    only one side -- for example forecast months that do not have actuals yet -- are
+    kept, with the missing side coming back as ``NaN`` (so an unavailable actual is
+    distinguishable from a true zero).
+
+    Column-name collisions are handled automatically. If the actual and expected
+    amount columns share a name (e.g. both frames call their value column
+    ``"amount"``, which a plain merge would turn into ``amount_x`` / ``amount_y``),
+    the output columns are named ``"{actual_col}_{suffixes[0]}"`` and
+    ``"{expected_col}_{suffixes[1]}"`` -- by default ``amount_actual`` and
+    ``amount_expected``. Pass ``suffixes=("actual", "forecast")`` for
+    ``amount_actual`` / ``amount_forecast``. When the two columns already have
+    distinct names they are left unchanged.
+    """
     keys = as_list(on)
     validate_columns(actual, keys + [actual_col])
     validate_columns(expected, keys + [expected_col])
-    result = actual.merge(expected[keys + [expected_col]], on=keys, how=how, validate="many_to_one")
-    result["actual_to_expected"] = actual_to_expected(result[actual_col], result[expected_col])
-    result["variance"] = variance(result[actual_col], result[expected_col])
-    result["variance_pct"] = variance_pct(result[actual_col], result[expected_col])
+
+    actual_suffix, expected_suffix = suffixes
+    actual_out, expected_out = actual_col, expected_col
+    actual_frame = actual
+    expected_subset = expected[keys + [expected_col]]
+    other_actual_cols = set(actual.columns) - set(keys)
+
+    if actual_col == expected_col:
+        # same name on both sides -> disambiguate both
+        actual_out = f"{actual_col}_{actual_suffix}"
+        expected_out = f"{expected_col}_{expected_suffix}"
+        actual_frame = actual.rename(columns={actual_col: actual_out})
+        expected_subset = expected_subset.rename(columns={expected_col: expected_out})
+    elif expected_col in other_actual_cols:
+        # expected amount name collides with an unrelated actual column -> rename expected only
+        expected_out = f"{expected_col}_{expected_suffix}"
+        expected_subset = expected_subset.rename(columns={expected_col: expected_out})
+
+    result = actual_frame.merge(
+        expected_subset, on=keys, how=how, validate="many_to_one"
+    )
+    result["variance"] = variance(result[actual_out], result[expected_out])
+    result["variance_pct"] = variance_pct(result[actual_out], result[expected_out])
+    result["actual_to_expected"] = actual_to_expected(result[actual_out], result[expected_out])
     return result
