@@ -58,6 +58,17 @@ class Experience:
     Bind ``count`` (a claim or service count) to unlock the frequency-severity views:
     :meth:`frequency_severity` and :meth:`decompose_trend` (utilization x unit cost,
     optionally x mix). :meth:`fit_trend` regresses a developed trend on the bound history.
+
+    **Grain matters.** ``Experience`` aggregates by *summing* the bound columns, so it
+    expects rows at the grain of the exposure unit -- one row per member-month, with
+    ``member_months`` = 1 (or the eligible fraction). If your data is *long* (one row per
+    service line, so the same member-month repeats across several rows), summing the
+    exposure column overcounts it, and every per-exposure figure -- PMPM, frequency, the
+    loss-ratio denominator -- is wrong by the number of rows per member-month. ``Experience``
+    does not detect this: it has no member key, so it cannot tell a long frame from a wide
+    one. For long or multi-table warehouse data, either aggregate to member-month grain
+    first, or use :meth:`bind`, which sources exposure from a correctly-grained table (e.g.
+    eligibility) via :class:`~actuarialpy.Count` and never sums a repeated column.
     """
 
     data: pd.DataFrame

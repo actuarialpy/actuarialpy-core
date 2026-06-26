@@ -176,4 +176,4 @@ __all__ = [
     "apply_seasonality",
 ]
 
-__version__ = "0.28.0"
+__version__ = "0.30.0"

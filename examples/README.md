@@ -24,6 +24,7 @@ change. The others each focus on one surface.
 | `seasonality.py` | seasonality | `business_days_in_period`, `seasonality_factors` → `deseasonalize`, plus per-line `seasonality_factors_by` + grouped `deseasonalize(by=)` |
 | `restatement.py` | adjustments | `Experience.adjust` chain — scalar trend, per-region and per-line relativities, with a cumulative `audit_col` |
 | `trend_and_forecast.py` | trend | `trend_summary`, `annualized_trend`, `project_forward`, `trend_factor`, and `fit_trend` (log-linear trend with diagnostics, fit on deseasonalized history) |
+| `rolling_trend_monitor.py` | rolling, decomposition | a monthly change-in-trend monitor: each evaluation month compares the trailing-12 window to the same window a year earlier via `decompose_pmpm_trend`, reporting whether the year-over-year move is utilization- or unit-cost-driven |
 | `trend_decomposition.py` | decomposition | `decompose_pmpm_trend` two-way (utilization × unit cost), and the three-way `mix_by=` split — adds a mix term via LMDI, reconciling exactly; single dimension, the cross of two, and `on=` + `mix_by=` together; plus the `Experience.decompose_trend` facade method (same split with columns bound once) |
 | `credibility.py` | credibility | `credibility_weighted_estimate`, `Experience.credibility_weighted` |
 | `lifecycle_and_banding.py` | lifecycle, banding | `derive_status`, `Experience.by_status`, `Experience.by_band` |

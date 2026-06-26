@@ -220,3 +220,4 @@ def sample_trend_cells() -> pd.DataFrame:
         rows.append({"period": "2025", "segment": seg, "region": reg, "member_months": float(mm1),
                      "claim_count": u1 * mm1, "allowed": allowed1, "premium": 1.18 * allowed1})
     return pd.DataFrame(rows)
+

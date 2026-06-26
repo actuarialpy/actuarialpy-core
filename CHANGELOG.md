@@ -1,5 +1,103 @@
 # Changelog
 
+## 0.30.0
+
+Simplified the library back to a single contract: **one tidy table in, views out.**
+`Experience` takes a frame at the grain you're analysing, you name its columns, and you ask
+for views — `by`, `rolling`, `trend`, completion, seasonality, and the rest — alongside the
+free functions for one-off math.
+
+### Removed
+
+- The keyed measure facts engine (`Fact`, `Count`, and `Experience.bind`) introduced in
+  0.29.0. It let you bind several warehouse tables (claims / eligibility / premium) at
+  different grains and enforced a cut-by-keys law so member-months couldn't be summed off
+  claim rows. In practice it added a second way to use the library and a layer of grain
+  reasoning (canonical keys, the cut-by-keys law, the broadcast rule) for a data-plumbing
+  job that pandas already does well. Building the analysis frame — aggregating claims to a
+  grain, counting member-months from eligibility, joining premium — is left to the caller,
+  where it belongs. The single-frame `Experience` and every free function are unchanged.
+
+## 0.29.0
+
+Adds the **keyed measure fact** engine: a multi-table companion to the single-frame
+`Experience` (which is unchanged and remains the primary entry point for one-frame data),
+for warehouse-shaped data where claims, eligibility, and premium live in separate tables at
+different grains. You declare each table as a `Fact` (its measures,
+counts, optional exposure, and the keys it is carried by) and bind them into one object;
+the engine aggregates each fact only *up* to grains its keys support, joins facts on
+shared keys, and computes rates and decompositions from the existing verified primitives.
+
+The single law governing every operation: **a measure can be cut only by keys its fact
+carries.** The one principled exception is exposure -- the declared population denominator
+-- which is broadcast across reporting axes it does not carry (so per-line utilization
+divides each line's count by *total* membership, never an apportioned share). Every other
+measure must carry the requested grain's keys or the cut is refused: a member-level loss
+ratio is unavailable when premium is only group-grain, and the engine raises rather than
+fabricate a per-member premium. This is purely additive; the single-frame `Experience`
+and all free functions are unchanged.
+
+### Added
+
+- `Fact` -- one keyed table. Declares `measures` (summed), `counts` (severity
+  denominators / utilization numerators), optional `exposure` (`Count(col)` to count a
+  column, e.g. member-months from an eligibility table, or a measure name), `keys` (a list
+  or a `{canonical: physical}` map so a claims table's `incurred_month` and an eligibility
+  table's `month` both fill the `month` role and join), `category` (a within-fact
+  reporting axis, folded into keys), and `labels` (human-readable names that travel with a
+  key, lossless via functional dependence).
+- `Count` -- marks exposure as the count of a column over a cut (never summed off claim
+  rows), the fix for the member-months overcount footgun.
+- `BoundExperience` -- the engine returned by `Experience.bind`. Methods:
+  - `rate(numerator, denominator="exposure", by=, scale=)` -- the single rate primitive.
+    PMPM is `rate(measure)`; utilization is `rate(count, scale=...)`; severity is
+    `rate(measure, count)`; loss ratio is `rate(paid, premium)`. Convenience wrappers
+    `pmpm`, `utilization`, `severity`, `loss_ratio` call it. `numerator` and `denominator`
+    each accept a **list** of measure names, summed -- the multi-table analogue of binding
+    several expense columns. The pieces may live in different facts at different grains
+    (e.g. FFS `paid` from claims plus a member-month `care_mgmt` fee plus a group-month
+    `rebate`); each is aggregated to the grain and added, and the cut-by-keys law applies to
+    every measure. Non-FFS expenses are modeled as their own facts at their own grain, not
+    as fake service lines in claims.
+  - `trend(numerator, by=, prior=, current=, denominator=, period=)` -- period-over-period
+    change in a per-exposure (or any) rate; `period` defaults to the bound `time` key.
+  - `decompose(measure, count, by=, mix_by=, prior=, current=)` -- utilization x unit cost
+    (x mix) decomposition of the PMPM change, delegating the LMDI math to
+    `decompose_pmpm_trend`. `mix_by` must be keys of the exposure fact (the partition
+    test): mix measures composition shift across a partition of the population, so it is
+    only defined on dimensions that partition exposure.
+  - `flag_entities(entity, measure, threshold, return_detail=)` -- decides *who* crosses a
+    threshold on the aggregate, then returns those entities' original rows intact (every
+    date, group, and category preserved). The large-claimant pattern that must not collapse
+    detail.
+  - `concentration(measure, entity, by=, ...)` -> `claim_concentration`; `pool(measure,
+    entity, pooling_point, by=)` -> `pool_losses`; `summary(by=)` for totals and PMPM.
+- `Experience.bind(facts, time=None)` -- classmethod entry point returning a
+  `BoundExperience`. `Fact`, `Count`, and `BoundExperience` are exported at the top level.
+
+### Examples
+
+- New `keyed_facts.py` -- a runnable end-to-end demo on three synthetic warehouse tables
+  (claims / eligibility / premium): binding via `Experience.bind`, `pmpm`, per-line
+  `utilization` (showing exposure broadcast and the absence of member-month overcount),
+  `severity`, group `loss_ratio` and the refused member-level one, `trend`, two- and
+  three-way `decompose` (reconciling to machine precision), and `flag_entities` with claim
+  detail preserved.
+- New `binding_example.py` -- a `build_experience(claims, eligibility, premium,
+  premium_has_member_id=...)` template to copy and point at your own tables, spotlighting
+  the column mapping and the one group- vs member-grain premium decision.
+- New `sample_warehouse()` generator in `_sample_data.py` returning the three keyed tables
+  at their natural grains; `examples/README.md` updated.
+
+### Tests
+
+- New `test_facts.py` (31 tests): `Fact` and `bind` validation; every core rate against
+  hand-computed values; the cut-by-keys law on both numerator and denominator; exposure
+  broadcast and the member-months no-overcount guarantee; trend; decompose reconciliation
+  (`util_trend * cost_trend * mix_trend == pmpm_trend`), factor recovery, and the partition
+  test; `flag_entities` detail preservation, summary mode, and empty result; concentration,
+  pool, and summary. Full suite: 288 passing.
+
 ## 0.28.0
 
 Wires the frequency-severity family into the `Experience` facade so columns are bound
