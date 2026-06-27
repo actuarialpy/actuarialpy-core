@@ -56,7 +56,12 @@ from actuarialpy.banding import assign_band, summarize_by_band
 from actuarialpy.adjustments import adjust
 from actuarialpy.columns import factor_lookup
 from actuarialpy.margins import add_margin, margin, margin_ratio
-from actuarialpy.pooling import excess_over_threshold, pool_losses
+from actuarialpy.pooling import (
+    excess_over_threshold,
+    pool_losses,
+    retained_cv,
+    retention_for_target_cv,
+)
 from actuarialpy.experience import status_summary, summarize_experience, summarize_views
 from actuarialpy.expected import summarize_actual_vs_expected
 from actuarialpy.claimants import summarize_claimants, top_claimants, large_claimant_flags, claim_concentration
@@ -167,6 +172,8 @@ __all__ = [
     # large-loss pooling
     "excess_over_threshold",
     "pool_losses",
+    "retained_cv",
+    "retention_for_target_cv",
     # seasonality and working-day adjustment
     "business_days_in_period",
     "add_business_days",
@@ -176,4 +183,4 @@ __all__ = [
     "apply_seasonality",
 ]
 
-__version__ = "0.30.0"
+__version__ = "0.31.0"

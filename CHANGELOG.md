@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.31.0
+
+### Added
+
+- `retained_cv` and `retention_for_target_cv` in the pooling module. `retained_cv`
+  gives the coefficient of variation of the retained (capped) aggregate of `n`
+  independent units; `retention_for_target_cv` inverts it to find the retention
+  level at which that CV meets a target, which is the basis for a size-graded
+  retention rule (larger `n` tolerates a higher retention). Both are general
+  retention-stability primitives over a per-unit outcome sample -- no domain
+  vocabulary -- and use a sorted prefix-sum so the capped-CV curve is computed in
+  one pass.
+
 ## 0.30.0
 
 Simplified the library back to a single contract: **one tidy table in, views out.**

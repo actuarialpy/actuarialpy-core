@@ -1,10 +1,9 @@
 # ActuarialPy
 
-Standard actuarial analyses on your real data — loss ratios and PMPM, development
-triangles and IBNR, trend, credibility, seasonality, and utilization/unit-cost
-decomposition — computed straight from the long, transactional tables you already have.
-Deterministic and pandas-native: the only dependencies are `numpy` and `pandas`, and
-every result is an ordinary DataFrame or Series you can inspect, join, and export.
+Standard actuarial analyses on claims, eligibility, and premium data: loss ratios and PMPM,
+development triangles and IBNR, trend, credibility, seasonality, and utilization/unit-cost
+decomposition, computed from long, transactional tables. The only dependencies are `numpy`
+and `pandas`, and every result is a DataFrame or Series.
 
 ## Contents
 
@@ -26,21 +25,20 @@ every result is an ordinary DataFrame or Series you can inspect, join, and expor
 
 ## Overview
 
-ActuarialPy is a calculation library. Its job is the arithmetic that has to be right —
-loss ratios, per-exposure rates, chain-ladder development, credibility blends, seasonal
-factors, the LMDI trend split — applied to ordinary claims, eligibility, and premium data.
-It does not own your data prep or your filed methodology; you bring the table, choose the
-method, and the library computes.
+ActuarialPy is a calculation library for loss ratios, per-exposure rates, chain-ladder
+development, credibility, seasonal factors, and the LMDI trend decomposition, applied to
+claims, eligibility, and premium data. It does not perform data preparation or encode filed
+methodology: the caller supplies the table and selects the method.
 
-There are two ways in, and they layer:
+There are two interfaces:
 
 - **Free functions** — `loss_ratio`, `pmpm`, `severity`, `trend_factor`, `fit_trend`,
-  `seasonality_factors`, `decompose_pmpm_trend`, the credibility models, and the rest.
-  Each takes scalars, NumPy arrays, or pandas Series and returns the same. Use them on any
-  frame, at any grain you've aggregated to.
-- **The `Experience` object** — when you'll run several analyses at one grain, bind the
-  column roles once (what's expense, revenue, exposure, date) and reuse them across grouped
-  summaries, rolling windows, trends, completion, seasonality, and more.
+  `seasonality_factors`, `decompose_pmpm_trend`, the credibility models, and others. Each
+  accepts scalars, NumPy arrays, or pandas Series and returns the same type. They operate on
+  any frame at any grain.
+- **The `Experience` object** — binds the column roles (expense, revenue, exposure, date)
+  once and reuses them across grouped summaries, rolling windows, trends, completion,
+  seasonality, and more. Use it when running several analyses at one grain.
 
 ## Installation
 
@@ -50,8 +48,8 @@ pip install actuarialpy
 
 ## Quick start
 
-Pass one tidy table — your experience at the grain you're analysing (one row per unit, e.g.
-per group per month) — name its columns, and ask for views:
+Pass one table at the grain you are analysing (one row per unit, e.g. per group per month),
+name its columns, and request views:
 
 ```python
 import actuarialpy as ap
@@ -72,9 +70,8 @@ exp.trend(date_col="month",                 # period-over-period trend
           current_start="2025-01-01", current_end="2025-12-01")
 ```
 
-You build `data` with pandas from whatever sources you have — typically a single `groupby`
-that aggregates claims to your grain, counts member-months from eligibility, and joins
-premium:
+Build `data` with pandas. Typically this is a single `groupby` that aggregates claims to the
+grain, counts member-months from eligibility, and joins premium:
 
 ```python
 g = ["group_id", "month"]
@@ -84,18 +81,18 @@ data = (claims.groupby(g)["paid_amount"].sum().rename("claims").to_frame()
         .reset_index())
 ```
 
-Counting member-months from eligibility — rather than summing a column that repeats across a
-member's several claim rows — is the one thing to get right; everything else is ordinary
-aggregation. Pick the grain to match the question: add `"service_type"` for a per-line view,
-keep `member_id` for member-level work. For one-off numbers you can skip the object entirely
-and call the [free functions](#ratios-and-per-exposure-metrics) on any aggregates.
+Member-months are counted from eligibility rather than summed from claims, because the
+eligibility count does not repeat across a member's claim rows. The remaining steps are
+standard aggregation. Choose the grain to match the question: add `"service_type"` for a
+per-line view, or keep `member_id` for member-level analysis. For single calculations, use
+the [free functions](#ratios-and-per-exposure-metrics) directly on any aggregate.
 
 ## The `Experience` object
 
-Binding the column roles once means every analysis reuses them — you never re-specify which
-column is premium or how a loss ratio is computed. Bind `count` (a claim or service count) as
-well to unlock the frequency-severity views (`frequency_severity`, `decompose_trend`).
-`filter(...)` and `with_roles(...)` return new objects without mutating the original.
+The bound roles are reused by every method, so the expense, revenue, exposure, and date
+columns are specified once. Binding `count` (a claim or service count) enables the
+frequency-severity views (`frequency_severity`, `decompose_trend`). `filter(...)` and
+`with_roles(...)` return new objects without mutating the original.
 
 ### `Experience` methods
 
@@ -142,8 +139,8 @@ NaN rather than raising on a zero denominator):
 
 ## Reserving
 
-Build a development triangle from transactional claims, fit a chain ladder, and read off
-ultimates and IBNR. Origin and development periods are derived for you.
+Build a development triangle from transactional claims, fit a chain ladder, and obtain
+ultimates and IBNR. Origin and development periods are derived automatically.
 
 ```python
 from actuarialpy import make_completion_triangle, ChainLadder, completion_factors
@@ -161,9 +158,9 @@ factors = completion_factors(triangle, method="volume", tail=1.0)   # 1 / cumula
 ```
 
 `ChainLadder.fit` exposes `age_to_age`, `cdf`, `completion_factors`, `tail`, and `method`.
-Segment-level reserving needs no manual splitting — `chain_ladder_by` returns a
-`{segment: ChainLadder}` mapping, and `completion_factors_by` returns a tidy table of
-factors, one row per `(segment, development_month)`:
+For segment-level reserving, `chain_ladder_by` returns a `{segment: ChainLadder}` mapping,
+and `completion_factors_by` returns a table of factors, one row per `(segment,
+development_month)`:
 
 ```python
 from actuarialpy import completion_factors_by
@@ -175,11 +172,10 @@ cf_by_lob = completion_factors_by(
 )
 ```
 
-**Applying factors is kept separate from estimating them**, because applying hinges on a
-join — each row's development period matched to the right factor. `apply_completion` matches
-**by value** (the frame's index is irrelevant), takes each row's period as
-`development_months(incurred, valuation)`, and treats rows past the triangle's last period
-as fully complete, so only recent, immature months move:
+Applying factors is separate from estimating them. `apply_completion` matches by value (the
+frame's index is not used), computes each row's period as `development_months(incurred,
+valuation)`, and treats rows past the triangle's last period as fully complete, so only
+immature months are adjusted:
 
 ```python
 from actuarialpy import apply_completion
@@ -197,14 +193,14 @@ completed = apply_completion(
 )
 ```
 
-An absent `(group, period)` stays `NaN` (a surfaced gap, never silently filled), and a
-duplicated key in the factor table is rejected rather than fanned out. **Other methods**
-that blend emerged-to-date with an a priori are available through `develop_ultimate(...,
-method=...)`: `"chain_ladder"`, `"bornhuetter_ferguson"` (with `apriori_col`), `"benktander"`,
-and `"cape_cod"` (a priori derived from the data, taking `exposure_col`). All accept `by=`.
-The library applies the method; it does not pick the a priori or the exposure base. On the
-`Experience` facade, `complete(factors, valuation_date=...)` grosses the expense column up to
-ultimate in place. Run completion **before** deseasonalizing and trending.
+An absent `(group, period)` returns `NaN`; a duplicated key in the factor table raises
+rather than producing a many-to-many join. Methods that blend emerged-to-date experience
+with an a priori are available through `develop_ultimate(..., method=...)`: `"chain_ladder"`,
+`"bornhuetter_ferguson"` (with `apriori_col`), `"benktander"`, and `"cape_cod"` (a priori
+derived from the data, taking `exposure_col`). All accept `by=`. The method is applied as
+specified; the a priori and exposure base are caller-supplied. On the `Experience` object,
+`complete(factors, valuation_date=...)` returns a new Experience with the expense column
+developed to ultimate. Run completion before deseasonalizing and trending.
 
 ## Trend and forecasting
 
@@ -216,10 +212,9 @@ project_forward(1000.0, 0.06, months=18)  # trend a value forward 18 months
 annualized_trend(current=1.1, prior=1.0, months_between=12)
 ```
 
-The functions above *apply* a trend or measure it between two points. To *develop* a trend
-from history, `fit_trend` regresses `log(rate)` on time (log-linear OLS) over the whole
-series — using every period, so one noisy month doesn't swing it — and returns the fitted
-annual trend, goodness of fit, and a confidence interval:
+The functions above apply a trend or measure it between two points. To estimate a trend from
+history, `fit_trend` regresses `log(rate)` on time (log-linear OLS) over the full series and
+returns the fitted annual trend, goodness of fit, and a confidence interval:
 
 ```python
 from actuarialpy import fit_trend
@@ -231,16 +226,16 @@ fit.factor(18)            # (1 + annual_trend) ** (18/12)
 ```
 
 It fits on the rate (`claims / member_months`) when an exposure is given, otherwise on the
-value directly; time is measured from real dates, so a missing period is handled correctly.
-Run it on completed, deseasonalized history (`complete → deseasonalize → fit_trend`) so
-runout and seasonality don't bias the slope. Rate-based projection lives in the forecast
-module: `forecast_experience(...)` applies a trended per-exposure rate to projected exposure.
+value. Time is measured from dates, so missing periods are handled correctly. Fit on
+completed, deseasonalized history (`complete` → `deseasonalize` → `fit_trend`) so runout and
+seasonality do not bias the slope. Rate-based projection is in the forecast module:
+`forecast_experience(...)` applies a trended per-exposure rate to projected exposure.
 
 ## Utilization and PMPM decomposition
 
-Split a per-member cost into utilization and unit cost, and decompose movement between two
-periods — the standard "how much of the trend is util vs cost" exhibit. It needs a claim or
-service count alongside losses and exposure, and is long-native (no reshaping):
+Split a per-member cost into utilization and unit cost, and decompose the change between two
+periods into utilization and unit-cost effects. It requires a claim or service count
+alongside losses and exposure:
 
 ```python
 from actuarialpy import frequency_severity_summary, decompose_pmpm_trend
@@ -260,21 +255,21 @@ trend = decompose_pmpm_trend(
 # pmpm_trend == util_trend * cost_trend (exact); pmpm_change == util_effect + cost_effect
 ```
 
-Pass `mix_by` to split PMPM three ways — utilization × unit cost × **mix** — when your book
-is a blend of cells whose composition is shifting (otherwise a book-wide util or cost trend
-silently absorbs membership-mix shifts). The split uses LMDI (logarithmic mean Divisia
-index), which is order-free and leaves no residual; every cell must have positive count,
-loss, and exposure in both periods. On an `Experience`, the same split is
-`exp.decompose_trend(...)`, using the bound `count`, `expense`, and `exposure` roles. See
+Pass `mix_by` to split PMPM into utilization, unit cost, and mix when the book is a blend of
+cells whose composition changes between periods; otherwise a book-wide utilization or cost
+trend absorbs membership-mix shifts. The split uses LMDI (logarithmic mean Divisia index),
+which is order-independent and leaves no residual. Every cell must have positive count, loss,
+and exposure in both periods. On an `Experience`, the same split is `exp.decompose_trend(...)`,
+using the bound `count`, `expense`, and `exposure` roles. See
 [`examples/trend_decomposition.py`](examples/trend_decomposition.py).
 
 ## Seasonality and working days
 
-Two months of claims are rarely comparable as-is — a month may have fewer working days, and
-the time of year matters on its own. Two separate tools handle the two effects.
+Two effects make months non-comparable: differing working-day counts, and the time of year.
+Two separate tools address them.
 
-`seasonality_factors` learns one multiplier per calendar period from a few years of history
-(the classical ratio-to-moving-average decomposition, normalized to average 1.0). Pass
+`seasonality_factors` estimates one multiplier per calendar period from several years of
+history (ratio-to-moving-average decomposition, normalized to average 1.0). Pass
 `exposure_col` to fit on a rate (PMPM), which removes membership growth so only the
 time-of-year pattern remains:
 
@@ -287,23 +282,22 @@ deseasonalize(recent, factors, date_col="month", value_col="claims")   # pattern
 apply_seasonality(annual_plan, factors, date_col="month", value_col="budget")  # multiplied back
 ```
 
-`business_days_in_period` counts weekdays minus holidays (US federal by default, no extra
-dependency) for the residual year-to-year wrinkle; when using both, normalize by working
-days first, then fit factors on the normalized series. On the `Experience` object,
-`deseasonalize(factors)` divides the pattern out of the expense column in place and returns
-a new `Experience`, so every downstream view composes on the deseasonalized series.
-`seasonality_factors_by` fits per segment and returns a tidy `(segment, season)` table; pass
-it with `by=` to `deseasonalize`. A rolling-12 or full-year comparison already cancels
-seasonality, so reach for this mainly when fitting trend on month-level data.
+`business_days_in_period` counts weekdays minus holidays (US federal by default) for the
+working-day effect; when using both, normalize by working days first, then fit factors on the
+normalized series. On the `Experience` object, `deseasonalize(factors)` divides the pattern
+out of the expense column and returns a new `Experience`, so downstream views use the
+deseasonalized series. `seasonality_factors_by` fits per segment and returns a table indexed
+by `(segment, season)`; pass it with `by=` to `deseasonalize`. A rolling-12 or full-year
+comparison already cancels seasonality; this is mainly needed when fitting trend on monthly
+data.
 
 ## Adjustments and restatement
 
-Much of experience rating is one move repeated: take a base amount and carry it through a
-chain of factors — completion, trend, benefit relativity, area, demographic loads, network
-discounts. `adjust` is that move: join a factor to each row by a key and multiply (or
-divide). `complete` and `deseasonalize` are specializations that derive the key from a date;
-`adjust` keys on an ordinary column. All share the same validated join (unique-key /
-fan-out guard, surfaced gaps, index-independent).
+Experience rating applies a chain of factors to a base amount: completion, trend, benefit
+relativity, area, demographic loads, network discounts. `adjust` joins a factor to each row
+by a key and multiplies (or divides). `complete` and `deseasonalize` derive the key from a
+date; `adjust` keys on a column. All use the same validated join (unique-key check, NaN on
+missing keys, index-independent).
 
 ```python
 from actuarialpy import adjust
@@ -315,10 +309,10 @@ adjust(experience, benefit_relativity, value_col="claims",       # a tidy per-se
        on="plan", by="line_of_business")
 ```
 
-`how="multiply"` (default) loads up; `how="divide"` backs a factor out. An absent key
-surfaces as `NaN`; pass `default=1.0` when missing should mean "no adjustment". On the
-`Experience` facade, `adjust` restates the expense column in place, and `audit_col` carries
-the cumulative restatement multiplier across the chain for a reviewable trail:
+`how="multiply"` (default) applies the factor; `how="divide"` removes it. An absent key
+returns `NaN`; pass `default=1.0` to treat a missing key as no adjustment. On the
+`Experience` object, `adjust` returns a new Experience with the expense column restated, and
+`audit_col` records the cumulative restatement multiplier across the chain:
 
 ```python
 restated = (
@@ -332,8 +326,7 @@ restated.by()   # grouped loss ratios on the fully restated claims
 
 ## Actual versus forecast
 
-Compare actuals against a forecast by supplying the two as separate tables — a database
-pull for paids, a finance workbook for the forecast — and aligning them:
+Compare actuals against a forecast supplied as two separate tables, joined on shared keys:
 
 ```python
 from actuarialpy.forecast import compare_actual_to_expected
@@ -348,15 +341,14 @@ variance = compare_actual_to_expected(
 # columns: <keys...>, amount_actual, amount_forecast, variance, variance_pct, actual_to_expected
 ```
 
-With `how="outer"`, a future month that has a forecast but no actual yet is kept with the
-missing side `NaN`, so unavailable actuals stay distinguishable from a true zero. When
-`category` mixes units (dollars and counts), keep it in the keys or filter to one category
-before totalling.
+With `how="outer"`, a forecast month with no actual is kept with the missing side `NaN`, so
+an unavailable actual is distinguishable from zero. When `category` mixes units (dollars and
+counts), keep it in the keys or filter to one category before totalling.
 
 ## Credibility
 
-Greatest-accuracy credibility, fit empirically from per-risk observations or constructed
-from known structural parameters:
+Greatest-accuracy (Bühlmann) credibility, fit from per-risk observations or constructed from
+known structural parameters:
 
 ```python
 from actuarialpy import Buhlmann, BuhlmannStraub, credibility_weighted_estimate
@@ -370,8 +362,8 @@ ws = BuhlmannStraub.fit(observations, weights=[[1,1,1,1],[2,2,2,2],[1,1,1,1]])  
 credibility_weighted_estimate(observed=0.82, complement=0.75, z=0.6)            # blend directly
 ```
 
-For the limited-fluctuation (classical) credibility most group experience rating uses — the
-square-root rule against a full-credibility standard — use `limited_fluctuation_z`:
+For limited-fluctuation (classical) credibility — the square-root rule against a
+full-credibility standard — use `limited_fluctuation_z`:
 
 ```python
 from actuarialpy import limited_fluctuation_z, full_credibility_claims, credibility_weighted_estimate
@@ -391,7 +383,11 @@ directly when EPV and VHM are already known.
   `add_months_in_force(...)`, `add_tenure(...)`, and `derive_status(...)` (labels rows
   active / first-year / termed).
 - **Pooling** (`pooling`): `pool_losses(df, loss_col, pooling_point)` splits each loss into
-  pooled and excess; `excess_over_threshold(...)` isolates the excess layer. Long-native.
+  pooled and excess portions; `excess_over_threshold(...)` returns the excess layer.
+  `retained_cv(outcomes, retention, n_units)` returns the coefficient of variation of the
+  retained aggregate of `n_units` independent units capped at `retention`, and
+  `retention_for_target_cv(outcomes, n_units, target_cv)` inverts it to the retention at
+  which that CV meets a target (the basis for a size-graded retention).
 - **Banding** (`banding`): `assign_band(df, value_col, bands)` and `summarize_by_band(...)`.
 - **Margins** (`margins`): `add_margin(...)` / `margin(...)` / `margin_ratio(...)`.
 - **Contribution** (`contribution`): `share_of_total(...)`, `contribution_to_change(...)`,
@@ -410,10 +406,9 @@ to_excel_report(views, "experience_report.xlsx")
 
 ## The ActuarialPy ecosystem
 
-ActuarialPy is the deterministic, experience-and-data layer of a small family of actuarial
-packages. It is standalone (only `numpy` and `pandas`). Three companion packages cover the
-distributional and simulation side and interoperate through a simple `.sample()` / `.mean()`
-interface:
+ActuarialPy is the experience-and-data layer of a set of actuarial packages. It is standalone
+(only `numpy` and `pandas`). Three companion packages cover distributional and simulation
+methods and interoperate through a `.sample()` / `.mean()` interface:
 
 - **`lossmodels`** — frequency and severity distributions, aggregate (collective-risk) loss
   models, coverage modifications, and model fitting.
