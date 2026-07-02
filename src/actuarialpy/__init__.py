@@ -257,4 +257,11 @@ __all__ = [
     "add_exposure_column",
 ]
 
-__version__ = "0.33.0"
+from importlib.metadata import PackageNotFoundError as _PackageNotFoundError, version as _version
+
+try:
+    __version__ = _version("actuarialpy")
+except _PackageNotFoundError:  # running from a source tree without an installed distribution
+    __version__ = "0.0.0"
+
+del _PackageNotFoundError, _version

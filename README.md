@@ -21,7 +21,6 @@ and `pandas`, and every result is a DataFrame or Series.
 - [Credibility](#credibility)
 - [Lifecycle, pooling, banding, margins](#lifecycle-pooling-banding-margins)
 - [Reporting](#reporting)
-- [The OpenActuarial ecosystem](#the-openactuarial-ecosystem)
 
 ## Overview
 
@@ -403,18 +402,6 @@ from actuarialpy.reporting import to_excel_report
 views = exp.views({"overall": None, "by_group": "group_id"})
 to_excel_report(views, "experience_report.xlsx")
 ```
-
-## The OpenActuarial ecosystem
-
-**`actuarialpy`** is the experience-and-data layer of a set of actuarial packages. It is standalone
-(only `numpy` and `pandas`). Three companion packages cover distributional and simulation
-methods and interoperate through a `.sample()` / `.mean()` interface:
-
-- **`lossmodels`** — frequency and severity distributions, aggregate (collective-risk) loss
-  models, coverage modifications, and model fitting.
-- **`risksim`** — portfolio loss simulation and aggregate reinsurance program evaluation.
-- **`extremeloss`** — extreme value theory: tail fitting (POT/GPD, block maxima/GEV), tail
-  risk measures, and threshold diagnostics.
 
 ## Testing
 
